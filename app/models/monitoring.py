@@ -264,6 +264,30 @@ class SoftwarePackage(UUIDMixin, TimestampMixin, Base):
         return f"<SoftwarePackage {self.name} {self.version}>"
 
 
+class NextDnsConfig(UUIDMixin, TimestampMixin, Base):
+    """Config ya NextDNS ya org moja. Backend poller huvuta DNS logs za profile
+    hii na kuziingiza kwa org husika (multi-tenant, hakuna bridge ya kuendesha)."""
+
+    __tablename__ = "nextdns_configs"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_nextdns_org"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    profile_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: NextDNS API key (siri; imehifadhiwa server-side, hairudishwi kwa frontend).
+    api_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    #: Timestamp ya tukio la mwisho lililoingizwa (kwa dedup — tunachukua mapya tu).
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: "ok" au ujumbe wa kosa la mwisho.
+    last_status: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<NextDnsConfig org={self.organization_id} profile={self.profile_id}>"
+
+
 class CollectionStream(UUIDMixin, TimestampMixin, Base):
     """Ukusanyaji unaoendelea (capture/logs) uliohifadhiwa server-side.
 

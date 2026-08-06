@@ -15,15 +15,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from app.api.deps import DbSession, SensorOrg
-from app.core import geoip, notify, threatintel
-from app.core.config import settings
+from app.core.ingest import ingest_security_events
 from app.core.logging import get_logger
-from app.crud import detection as detection_crud
-from app.crud import monitoring as crud
-from app.crud import notification as notification_crud
-from app.models.monitoring import ForensicSnapshot, LogEntry, SecurityEvent, Vulnerability
+from app.models.monitoring import ForensicSnapshot, LogEntry, Vulnerability
 from app.schemas.common import Message
-from app.schemas.intel import GeoLocation
 from app.schemas.monitoring import IngestBatch, IngestResult
 from app.schemas.telemetry import ForensicIn, LogBatch, ScanResult
 
@@ -43,113 +38,8 @@ def _occurred(ts: float | None) -> datetime | None:
 
 @router.post("/events", response_model=IngestResult, summary="Sensor event ingest")
 async def ingest_events(batch: IngestBatch, org_id: SensorOrg, db: DbSession) -> IngestResult:
-    flagged = 0
-    rule_hits = 0
-    touched: set = set()
-    now = datetime.now(timezone.utc)
-
-    # Kwa arifa: mistari ya matukio yaliyoflag na severity kubwa zaidi.
-    flagged_lines: list[str] = []
-    max_sev = "info"
-    _rank = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
-
-    # Rules zinapakuliwa mara moja kwa batch, kisha zinatathminiwa kwa kila event.
-    rules = await detection_crud.list_rules(db, org_id)
-
-    for ev in batch.events:
-        # --- GeoIP kwa destination (kwa flow) ---------------------------
-        geo: GeoLocation | None = None
-        if ev.dst_ip and settings.geoip_enabled:
-            geo = geoip.lookup(ev.dst_ip)
-
-        # --- OTX: domain (dns) au destination ya nje (flow) -------------
-        verdict = "unknown"
-        pulse_count = 0
-        if settings.otx_enabled:
-            target = None
-            if ev.kind == "dns" and ev.domain:
-                target = (ev.domain, "domain")
-            elif ev.dst_ip and not (geo and geo.is_private):
-                target = (ev.dst_ip, "ip")
-            if target is not None:
-                try:
-                    res = await threatintel.lookup_cached(target[0], target[1])  # type: ignore[arg-type]
-                    verdict, pulse_count = res.verdict, res.pulse_count
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("OTX enrichment imeshindwa kwa %s: %s", target[0], exc)
-
-        is_flagged = verdict in ("malicious", "suspicious")
-        if is_flagged:
-            flagged += 1
-
-        # --- Map kwa device --------------------------------------------
-        device = await crud.match_or_create_device(
-            db, org_id, mac=ev.src_mac, ip=ev.src_ip
-        )
-        occurred = _occurred(ev.ts)
-
-        event = SecurityEvent(
-            organization_id=org_id,
-            device_id=device.id if device is not None else None,
-            kind=ev.kind,
-            src_ip=ev.src_ip,
-            src_mac=crud.normalize_mac(ev.src_mac),
-            domain=ev.domain,
-            dst_ip=ev.dst_ip,
-            dst_port=ev.dst_port,
-            protocol=ev.protocol,
-            verdict=verdict,
-            severity=crud.severity_for(verdict),
-            pulse_count=pulse_count,
-            country=geo.country if geo else None,
-            asn=geo.asn if geo else None,
-            asn_org=geo.asn_org if geo else None,
-            occurred_at=occurred,
-        )
-
-        # Tathmini detection rules, zinaweza kupandisha severity ya event.
-        matched = detection_crud.evaluate(rules, event)
-        if matched:
-            rule_hits += len(matched)
-            is_flagged = True
-
-        if is_flagged:
-            indicator = event.domain or event.dst_ip or "?"
-            src = event.src_ip or "device"
-            flagged_lines.append(f"[{event.verdict}] {src} -> {indicator} ({event.country or 'unknown'})")
-            if _rank.get(event.severity, 0) > _rank.get(max_sev, 0):
-                max_sev = event.severity
-
-        if device is not None:
-            crud.touch_device(device, ip=ev.src_ip, when=occurred or now, flagged=is_flagged)
-            touched.add(device.id)
-
-        db.add(event)
-
-    await db.commit()
-    logger.info(
-        "Ingest: %s matukio, %s flagged, %s rule-hits, devices %s (org=%s)",
-        len(batch.events),
-        flagged,
-        rule_hits,
-        len(touched),
-        org_id,
-    )
-
-    # Arifa: kama kuna flagged, tuma muhtasari kwa channels zinazolingana.
-    if flagged_lines:
-        channels = await notification_crud.enabled_channels(db, org_id)
-        matching = [c for c in channels if notify.severity_meets(max_sev, c.min_severity)]
-        if matching:
-            subject = f"HomeSIEM: {len(flagged_lines)} flagged event(s) [{max_sev}]"
-            message = "\n".join(flagged_lines[:20])
-            sent = []
-            for c in matching:
-                if await notify.send_alert(ch_type=c.type, target=c.target, subject=subject, message=message):
-                    sent.append(c)
-            await notification_crud.mark_sent(db, sent)
-
-    return IngestResult(accepted=len(batch.events), flagged=flagged, devices_touched=len(touched))
+    accepted, flagged, touched = await ingest_security_events(db, org_id, batch.events)
+    return IngestResult(accepted=accepted, flagged=flagged, devices_touched=touched)
 
 
 @router.post("/logs", response_model=Message, summary="Log agent ingest")
