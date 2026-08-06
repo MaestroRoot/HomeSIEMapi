@@ -1,0 +1,21 @@
+# --- Core ---------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# --- Auth (Firebase) ----------------------------------------------------
+firebase-admin==6.6.0
+
+# --- Database (Postgres, itaanzishwa siku nyingine) --------------------
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# --- GeoIP (MaxMind GeoLite2, lookup ya ndani) --------------------------
+geoip2==5.3.0
+
+# --- Utils --------------------------------------------------------------
+httpx==0.28.1
+python-multipart==0.0.20

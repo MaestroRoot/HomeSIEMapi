@@ -1,0 +1,29 @@
+# Postgres ya HomeSIEM.  Anza kwa:  docker compose up -d
+#
+# Host port ni 5433 (sio 5432) kwa sababu mashine hii tayari ina Postgres
+# nyingine inayosikiliza 5432.  Ndani ya container bado ni 5432.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: homesiem-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-homesiem}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-homesiem}
+      POSTGRES_DB: ${POSTGRES_DB:-homesiem}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Schema yenyewe inatengenezwa na alembic (`alembic upgrade head`).
+      # Nakala ya SQL iko `backend/schema/` kwa kusoma na kwa deploy
+      # zisizotumia alembic.  Haija-mount hapa ili initdb isigongane
+      # na migrations.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-homesiem} -d ${POSTGRES_DB:-homesiem}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
