@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote_plus
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -149,9 +150,15 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        # URL-encode user/password/db ili herufi maalum (@ : / # % nk kwenye
+        # password imara) zisivunje connection string na kusababisha asyncpg
+        # ijaribu kutafsiri "host" isiyo sahihi ("Name or service not known").
+        user = quote_plus(self.postgres_user)
+        password = quote_plus(self.postgres_password)
+        db = quote_plus(self.postgres_db)
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"postgresql+asyncpg://{user}:{password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{db}"
         )
 
 
