@@ -11,8 +11,8 @@ from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.core.firebase import init_firebase
 from app.core.logging import configure_logging, get_logger
-from app.core.nextdns_poller import run_nextdns_poller
 from app.core.scheduler import run_scheduler
+from app.core.cloudflare_gateway_poller import run_cloudflare_gateway_poller
 from app.db.session import dispose_engine
 
 logger = get_logger(__name__)
@@ -28,12 +28,12 @@ async def lifespan(_: FastAPI):
 
     stop_event = asyncio.Event()
     scheduler_task = asyncio.create_task(run_scheduler(stop_event))
-    nextdns_task = asyncio.create_task(run_nextdns_poller(stop_event))
+    cf_gateway_task = asyncio.create_task(run_cloudflare_gateway_poller(stop_event))
 
     yield
 
     stop_event.set()
-    for task in (scheduler_task, nextdns_task):
+    for task in (scheduler_task, cf_gateway_task):
         try:
             await asyncio.wait_for(task, timeout=5)
         except asyncio.TimeoutError:
