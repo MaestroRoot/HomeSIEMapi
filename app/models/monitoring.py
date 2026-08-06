@@ -266,7 +266,10 @@ class SoftwarePackage(UUIDMixin, TimestampMixin, Base):
 
 class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
     """Config ya Cloudflare Gateway ya org moja. Backend poller huvuta DNS logs
-    kutoka Cloudflare Zero Trust API na kuziingiza kwa org husika (multi-tenant)."""
+    kutoka Cloudflare Zero Trust API na kuziingiza kwa org husika (multi-tenant).
+
+    Reseller model: single Cloudflare account (from settings), location per org.
+    """
 
     __tablename__ = "cloudflare_gateway_configs"
     __table_args__ = (UniqueConstraint("organization_id", name="uq_cloudflare_gateway_org"),)
@@ -274,8 +277,6 @@ class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    account_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    api_token: Mapped[str] = mapped_column(String(256), nullable=False)
     location_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
@@ -284,7 +285,17 @@ class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
     last_status: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
-        return f"<CloudflareGatewayConfig org={self.organization_id} account={self.account_id}>"
+        return f"<CloudflareGatewayConfig org={self.organization_id} location={self.location_id}>"
+
+    @property
+    def doh_hostname(self) -> str | None:
+        """DoH hostname for this org's location."""
+        if not self.location_id:
+            return None
+        from app.core.config import settings
+        if settings.cloudflare_doh_domain:
+            return f"org-{self.organization_id.hex[:8]}.{settings.cloudflare_doh_domain}"
+        return f"{self.location_id}.dns.cloudflare-gateway.com"
 
 
 class CollectionStream(UUIDMixin, TimestampMixin, Base):

@@ -1,11 +1,10 @@
-"""Poller ya Cloudflare Gateway (multi-tenant).
+"""Poller ya Cloudflare Gateway (multi-tenant, reseller model).
 
 Kila kipindi, inazunguka org ZOTE zenye Cloudflare Gateway config iliyowashwa, inavuta DNS
-query logs kutoka Cloudflare Gateway API, na kuziingiza kwa org husika kupitia
-`ingest_security_events` (enrichment ileile ya GeoIP/OTX + rules + arifa).
+query logs kutoka Cloudflare Zero Trust API (single account), na kuziingiza kwa org husika
+kupitia `ingest_security_events` (enrichment ileile ya GeoIP/OTX + rules + arifa).
 
-Hakuna bridge ya kuendesha wala token — mtumiaji anaweka Cloudflare Account ID + API Token
-mara moja kwenye HomeSIEM, backend inashughulikia mengine.
+Reseller model: single Cloudflare account (from settings), location per org.
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ from datetime import datetime
 
 import httpx
 
+from app.core.config import settings
 from app.core.ingest import ingest_security_events
 from app.core.logging import get_logger
 from app.crud import cloudflare_gateway as crud
@@ -52,57 +52,18 @@ def _parse(iso: str | None) -> datetime | None:
 
 
 async def _sync_one(db, cfg, http: httpx.AsyncClient) -> None:
-    # First, get locations to find the location_id and verify access
-    try:
-        headers = {"Authorization": f"Bearer {cfg.api_token}", **_HEADERS_BASE}
-        r = await http.get(
-            f"{_CF_BASE}/accounts/{cfg.account_id}/gateway/locations",
-            headers=headers,
-        )
-    except httpx.HTTPError as exc:
-        await crud.mark_synced(db, cfg, status=f"fetch error: {exc}")
+    if not cfg.location_id:
+        await crud.mark_synced(db, cfg, status="no location_id (not provisioned)")
         return
 
-    if r.status_code == 429:
-        await crud.mark_synced(db, cfg, status="rate limited (will retry)")
-        return
-    if r.status_code >= 400:
-        await crud.mark_synced(db, cfg, status=f"HTTP {r.status_code}: {r.text[:80]}")
-        return
+    headers = {"Authorization": f"Bearer {settings.cloudflare_api_token}", **_HEADERS_BASE}
 
-    data = r.json()
-    if not data.get("success"):
-        errors = data.get("errors", [{"message": "Unknown error"}])
-        await crud.mark_synced(db, cfg, status=f"API error: {errors[0].get('message', 'Unknown')}")
-        return
-
-    locations = data.get("result", [])
-    if not locations:
-        await crud.mark_synced(db, cfg, status="no locations found")
-        return
-
-    # Find the configured location (or use the first one if not set)
-    target_location = None
-    if cfg.location_id:
-        for loc in locations:
-            if loc.get("id") == cfg.location_id:
-                target_location = loc
-                break
-    if not target_location:
-        target_location = locations[0]  # fallback to first
-
-    location_id = target_location.get("id")
-    location_name = target_location.get("name", "Unknown")
-
-    # Update config with location info
-    await crud.mark_synced(db, cfg, status="ok (location found)", location_id=location_id, location_name=location_name)
-
-    # Now fetch DNS logs for this location
+    # Fetch DNS logs for this location
     try:
         r = await http.get(
-            f"{_CF_BASE}/accounts/{cfg.account_id}/gateway/dns/logs",
+            f"{_CF_BASE}/accounts/{settings.cloudflare_account_id}/gateway/dns/logs",
             headers=headers,
-            params={"location_id": location_id, "limit": _LOG_LIMIT, "order": "desc"},
+            params={"location_id": cfg.location_id, "limit": _LOG_LIMIT, "order": "desc"},
         )
     except httpx.HTTPError as exc:
         await crud.mark_synced(db, cfg, status=f"logs fetch error: {exc}")
@@ -153,6 +114,10 @@ async def _sync_one(db, cfg, http: httpx.AsyncClient) -> None:
 
 
 async def _tick() -> None:
+    if not settings.cloudflare_gateway_ready:
+        logger.warning("Cloudflare Gateway poller skipped: credentials not configured")
+        return
+
     async with AsyncSessionLocal() as db:
         configs = await crud.all_enabled(db)
         if not configs:

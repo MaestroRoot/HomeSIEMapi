@@ -88,9 +88,21 @@ class Settings(BaseSettings):
     #: Siri inayowekwa mwishoni mwa webhook URL kama ulinzi wa ziada.
     clickpesa_webhook_secret: str | None = None
 
+    # --- Cloudflare Zero Trust (reseller model) ---------------------------
+    #: Single Cloudflare account credentials for creating/managing locations per org.
+    cloudflare_account_id: str | None = None
+    cloudflare_api_token: str | None = None
+    #: Optional custom domain for DoH (e.g., doh.homesiem.xyz). If set, locations
+    #: get hostnames like `org-{id}.doh.homesiem.xyz` via CNAME.
+    cloudflare_doh_domain: str | None = None
+
     @property
     def clickpesa_ready(self) -> bool:
         return bool(self.clickpesa_client_id and self.clickpesa_api_key)
+
+    @property
+    def cloudflare_gateway_ready(self) -> bool:
+        return bool(self.cloudflare_account_id and self.cloudflare_api_token)
 
     # --- Password reset OTP ---------------------------------------------
     otp_ttl_minutes: int = 10

@@ -1,4 +1,7 @@
-"""CRUD ya Cloudflare Gateway config (per-org)."""
+"""CRUD ya Cloudflare Gateway config (per-org).
+
+Reseller model: single Cloudflare account from settings, location per org.
+"""
 
 from __future__ import annotations
 
@@ -18,19 +21,16 @@ async def get_for_org(db: AsyncSession, org_id: uuid.UUID) -> CloudflareGatewayC
 
 
 async def upsert(
-    db: AsyncSession, org_id: uuid.UUID, *, account_id: str, api_token: str
+    db: AsyncSession, org_id: uuid.UUID
 ) -> CloudflareGatewayConfig:
+    """Create config for org (no credentials needed - uses global settings)."""
     cfg = await get_for_org(db, org_id)
     if cfg is not None:
-        cfg.account_id = account_id.strip()
-        cfg.api_token = api_token.strip()
         cfg.enabled = True
         cfg.last_status = None
     else:
         cfg = CloudflareGatewayConfig(
             organization_id=org_id,
-            account_id=account_id.strip(),
-            api_token=api_token.strip(),
             enabled=True,
         )
         db.add(cfg)
