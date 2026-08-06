@@ -1,8 +1,10 @@
 import asyncio
+import hashlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -52,7 +54,40 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag"],
 )
+
+
+@app.middleware("http")
+async def etag_middleware(request: Request, call_next):
+    """ETag + 304 kwa GET za JSON. Data isipobadilika, client (yenye
+    If-None-Match) inapata 304 bila body — muhimu kwenye mtandao wa polepole."""
+    response = await call_next(request)
+    if request.method != "GET" or response.status_code != 200:
+        return response
+    if not response.headers.get("content-type", "").startswith("application/json"):
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+        body += chunk
+    etag = 'W/"%s"' % hashlib.sha1(body).hexdigest()[:20]
+
+    def _carry(dst: Response) -> None:
+        for key, value in response.headers.items():
+            if key.lower() not in ("content-length", "content-type"):
+                dst.headers[key] = value
+        dst.headers["ETag"] = etag
+
+    if request.headers.get("if-none-match") == etag:
+        not_modified = Response(status_code=304)
+        _carry(not_modified)
+        return not_modified
+
+    fresh = Response(content=body, status_code=200, media_type="application/json")
+    _carry(fresh)
+    return fresh
+
 
 register_error_handlers(app)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
