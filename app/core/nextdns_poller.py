@@ -26,6 +26,10 @@ logger = get_logger(__name__)
 _NEXTDNS_BASE = "https://api.nextdns.io"
 _POLL_SECONDS = 20
 _LOG_LIMIT = 100
+#: api.nextdns.io iko nyuma ya Cloudflare inayozuia User-Agent za "bot" (error
+#: 1010). LAZIMA tutume browser UA ndipo tuweze kufikia API.
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+_HEADERS_BASE = {"User-Agent": _UA, "Accept": "application/json"}
 
 
 @dataclass
@@ -53,13 +57,16 @@ async def _sync_one(db, cfg, http: httpx.AsyncClient) -> None:
     try:
         r = await http.get(
             f"{_NEXTDNS_BASE}/profiles/{cfg.profile_id}/logs?limit={_LOG_LIMIT}",
-            headers={"X-Api-Key": cfg.api_key},
+            headers={"X-Api-Key": cfg.api_key, **_HEADERS_BASE},
         )
     except httpx.HTTPError as exc:
         await crud.mark_synced(db, cfg, status=f"fetch error: {exc}")
         return
+    if r.status_code == 429:
+        await crud.mark_synced(db, cfg, status="rate limited (will retry)")
+        return
     if r.status_code >= 400:
-        await crud.mark_synced(db, cfg, status=f"HTTP {r.status_code}")
+        await crud.mark_synced(db, cfg, status=f"HTTP {r.status_code}: {r.text[:80]}")
         return
 
     data = r.json().get("data") if isinstance(r.json(), dict) else None
@@ -94,12 +101,15 @@ async def _tick() -> None:
         if not configs:
             return
         async with httpx.AsyncClient(timeout=20) as http:
-            for cfg in configs:
+            for i, cfg in enumerate(configs):
                 try:
                     await _sync_one(db, cfg, http)
                 except Exception as exc:  # noqa: BLE001
                     logger.error("NextDNS sync imeshindwa (org=%s): %s", cfg.organization_id, exc)
                     await db.rollback()
+                # Pacing: NextDNS ina-rate-limit maombi ya haraka (429).
+                if i + 1 < len(configs):
+                    await asyncio.sleep(0.5)
 
 
 async def run_nextdns_poller(stop: asyncio.Event) -> None:
