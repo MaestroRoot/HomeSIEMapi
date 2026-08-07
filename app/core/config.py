@@ -31,7 +31,11 @@ class Settings(BaseSettings):
     # NoDecode: bila hii pydantic-settings inajaribu json.loads() kwenye value
     # ya .env kabla validator yetu haijafika, na "a,b" si JSON halali.
     cors_origins: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["http://localhost:5180"]
+        default_factory=lambda: [
+            "http://localhost:5180",
+            "http://localhost:3000",
+            "https://homesiem.vercel.app",
+        ]
     )
 
     # --- Postgres -------------------------------------------------------
