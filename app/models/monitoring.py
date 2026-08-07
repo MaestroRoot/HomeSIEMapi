@@ -117,6 +117,9 @@ class Device(UUIDMixin, TimestampMixin, Base):
     #: Lebo za kupanga vifaa (site, team, criticality...).
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
+    #: Jina la mtumiaji aliyeteuliwa kwenye kifaa hiki (kwa UEBA).
+    owner_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     risk_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     events_count: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(

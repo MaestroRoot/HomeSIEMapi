@@ -22,6 +22,7 @@ from app.api.v1.endpoints import (
     telemetry,
     users,
 )
+from app.api.v1.endpoints import ueva
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -43,4 +44,5 @@ api_router.include_router(agent.router)
 api_router.include_router(notifications.router)
 api_router.include_router(inventory.router)
 api_router.include_router(cloudflare_gateway.router)
+api_router.include_router(ueva.router)
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])

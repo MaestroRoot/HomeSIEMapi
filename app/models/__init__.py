@@ -32,6 +32,7 @@ from app.models.payment import Payment
 from app.models.security import Invitation, PasswordResetCode
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.ueva import UserAnomaly, UserBaseline, UserRiskScore
 
 __all__ = [
     "Base",
@@ -63,4 +64,7 @@ __all__ = [
     "Subscription",
     "SubscriptionStatus",
     "User",
+    "UserAnomaly",
+    "UserBaseline",
+    "UserRiskScore",
 ]

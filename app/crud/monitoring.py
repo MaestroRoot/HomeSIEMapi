@@ -77,6 +77,7 @@ async def register_device(
     device_type: str,
     last_ip: str | None,
     hostname: str | None,
+    owner_name: str | None = None,
 ) -> Device:
     mac_norm = normalize_mac(mac)
     # Kama MAC ipo tayari (imegunduliwa awali), sasishe badala ya kurudia.
@@ -98,6 +99,8 @@ async def register_device(
             existing.last_ip = last_ip
         if hostname:
             existing.hostname = hostname
+        if owner_name is not None:
+            existing.owner_name = owner_name
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -109,12 +112,16 @@ async def register_device(
         device_type=device_type,
         last_ip=last_ip,
         hostname=hostname,
+        owner_name=owner_name,
         discovered=False,
     )
     db.add(device)
     await db.commit()
     await db.refresh(device)
     return device
+
+
+_UNSET = object()
 
 
 async def update_device(
@@ -125,10 +132,10 @@ async def update_device(
     device_type: str | None = None,
     status: str | None = None,
     tags: list[str] | None = None,
+    owner_name: str | None | object = _UNSET,
 ) -> Device:
     if name is not None:
         device.name = name.strip()
-        # Mtumiaji akiipa jina, ameimiliki — si "discovered" tu tena.
         device.discovered = False
     if device_type is not None:
         device.device_type = device_type
@@ -136,6 +143,8 @@ async def update_device(
         device.status = status
     if tags is not None:
         device.tags = [t.strip() for t in tags if t.strip()][:20]
+    if owner_name is not _UNSET:
+        device.owner_name = owner_name
     await db.commit()
     await db.refresh(device)
     return device

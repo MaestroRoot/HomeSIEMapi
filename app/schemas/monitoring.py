@@ -25,6 +25,7 @@ class DeviceRead(CamelModel):
     device_type: str
     last_ip: str | None = None
     hostname: str | None = None
+    owner_name: str | None = None
     status: str
     discovered: bool
     tags: list[str] = []
@@ -44,6 +45,7 @@ class DeviceRegister(CamelModel):
     device_type: str = Field(default="Unknown", max_length=32)
     last_ip: str | None = Field(default=None, max_length=45)
     hostname: str | None = Field(default=None, max_length=255)
+    owner_name: str | None = Field(default=None, max_length=120)
 
 
 class DeviceUpdate(CamelModel):
@@ -51,6 +53,7 @@ class DeviceUpdate(CamelModel):
     device_type: str | None = Field(default=None, max_length=32)
     status: str | None = Field(default=None, max_length=16)
     tags: list[str] | None = Field(default=None, max_length=20)
+    owner_name: str | None = Field(default=None, max_length=120)
 
 
 class DeviceList(CamelModel):

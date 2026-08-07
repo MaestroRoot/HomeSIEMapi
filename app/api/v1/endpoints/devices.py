@@ -56,6 +56,7 @@ async def register_device(
         device_type=payload.device_type,
         last_ip=payload.last_ip,
         hostname=payload.hostname,
+        owner_name=payload.owner_name,
     )
     return DeviceRead.model_validate(device)
 
@@ -74,6 +75,7 @@ async def update_device(
         device_type=payload.device_type,
         status=payload.status,
         tags=payload.tags,
+        owner_name=payload.owner_name,
     )
     return DeviceRead.model_validate(device)
 
