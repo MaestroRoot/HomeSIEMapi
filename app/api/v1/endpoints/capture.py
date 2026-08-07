@@ -143,10 +143,11 @@ async def analyse_pcap(_user: CurrentUser, file: UploadFile) -> PcapAnalysis:
             )
         else:
             logger.info("tshark not found, using pure-Python pcap parser")
-            (dns_queries), (flows, packets_read, duration) = await asyncio.gather(
-                pcap_parser.extract_dns(path),
-                pcap_parser.extract_flows(path),
+            dns_queries, flows_result = await asyncio.gather(
+                asyncio.to_thread(pcap_parser.extract_dns, path),
+                asyncio.to_thread(pcap_parser.extract_flows, path),
             )
+            flows, packets_read, duration = flows_result
     finally:
         os.unlink(path)
 
