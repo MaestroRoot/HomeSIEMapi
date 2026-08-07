@@ -15,7 +15,7 @@ import tempfile
 from fastapi import APIRouter, UploadFile
 
 from app.api.deps import CurrentUser
-from app.core import geoip, pcap, threatintel
+from app.core import geoip, pcap, pcap_parser, threatintel
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.logging import get_logger
@@ -133,20 +133,20 @@ def _build_findings(dns: list[DnsQuery], flows: list[Flow]) -> list[PcapFinding]
 @router.post("/pcap", response_model=PcapAnalysis, summary="Analyse an uploaded capture")
 async def analyse_pcap(_user: CurrentUser, file: UploadFile) -> PcapAnalysis:
     """Soma pcap, toa DNS + flows, enrich kwa GeoIP + OTX, rudisha findings."""
-    if not settings.tshark_available:
-        raise AppError(
-            "Packet analysis is unavailable (tshark is not installed on the server).",
-            code="tshark_missing",
-            status_code=503,
-        )
-
     path = await _save_upload(file)
     try:
-        # DNS na flows zinaweza kutolewa kwa pamoja.
-        (dns_queries), (flows, packets_read, duration) = await asyncio.gather(
-            pcap.extract_dns(path),
-            pcap.extract_flows(path),
-        )
+        # Use tshark if available, otherwise fall back to pure-Python parser.
+        if settings.tshark_available:
+            (dns_queries), (flows, packets_read, duration) = await asyncio.gather(
+                pcap.extract_dns(path),
+                pcap.extract_flows(path),
+            )
+        else:
+            logger.info("tshark not found, using pure-Python pcap parser")
+            (dns_queries), (flows, packets_read, duration) = await asyncio.gather(
+                pcap_parser.extract_dns(path),
+                pcap_parser.extract_flows(path),
+            )
     finally:
         os.unlink(path)
 

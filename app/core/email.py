@@ -180,6 +180,34 @@ async def send_password_reset_otp(*, to_email: str, name: str | None, code: str)
     )
 
 
+async def send_mfa_otp(*, to_email: str, name: str | None, code: str) -> bool:
+    """Send MFA verification OTP for login."""
+    minutes = settings.otp_ttl_minutes
+    html = _shell(
+        "Your login verification code",
+        f"""
+        <p>Someone is signing into your {BRAND} account. Use this code to
+        complete your login. It expires in {minutes} minutes.</p>
+        <p style="margin:24px 0;text-align:center;">
+          <span style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;
+                border-radius:10px;padding:14px 26px;font-family:monospace;font-size:30px;
+                font-weight:700;letter-spacing:9px;color:#0f172a;">{code}</span>
+        </p>
+        <p>If you did not try to sign in, someone else may have access to your
+        email. Consider changing your password.</p>
+        """,
+        footer="Never share this code. Nobody from HomeSIEM will ask you for it.",
+    )
+    return await send_email(
+        to_email=to_email,
+        to_name=name,
+        subject=f"{code} is your {BRAND} login code",
+        html=html,
+        text=f"Your {BRAND} login code is {code}. It expires in {minutes} minutes.",
+        tags=["mfa-otp"],
+    )
+
+
 async def send_invitation_email(
     *, to_email: str, inviter_name: str, organization: str, role: str, accept_url: str
 ) -> bool:

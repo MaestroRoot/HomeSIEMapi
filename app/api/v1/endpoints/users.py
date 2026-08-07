@@ -33,6 +33,7 @@ async def update_own_profile(
         db,
         user,
         name=payload.name,
+        phone=payload.phone,
         avatar_url=payload.avatar_url,
         mfa_enabled=payload.mfa_enabled,
     )

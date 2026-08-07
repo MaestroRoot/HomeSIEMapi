@@ -13,6 +13,7 @@ class UserRead(CamelModel):
     id: uuid.UUID
     name: str
     email: EmailStr
+    phone: str | None = None
     role: Role
     plan: Plan
     mfa_enabled: bool
@@ -31,6 +32,7 @@ class UserUpdate(CamelModel):
     """Kile mtumiaji anaruhusiwa kubadilisha kwenye profile yake mwenyewe."""
 
     name: str | None = Field(default=None, min_length=2, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
     avatar_url: str | None = Field(default=None, max_length=512)
     mfa_enabled: bool | None = None
 

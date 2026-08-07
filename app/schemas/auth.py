@@ -18,6 +18,8 @@ class SessionRequest(CamelModel):
 class SessionResponse(CamelModel):
     user: UserRead
     is_new_user: bool
+    mfa_required: bool = False
+    mfa_temp_token: str | None = None
 
 
 class PasswordResetRequest(CamelModel):
@@ -54,3 +56,23 @@ class PasswordResetTicket(CamelModel):
 
     reset_token: str
     expires_in_minutes: int
+
+
+class MfaVerifyRequest(CamelModel):
+    """Sent after MFA is required during login."""
+
+    temp_token: str = Field(min_length=10, max_length=128)
+    code: str = Field(min_length=6, max_length=6)
+
+    @field_validator("code")
+    @classmethod
+    def _digits(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("The code is six digits.")
+        return value
+
+
+class MfaVerifyResponse(CamelModel):
+    """Returned after successful MFA verification."""
+
+    user: UserRead

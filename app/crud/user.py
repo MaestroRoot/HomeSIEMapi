@@ -175,15 +175,21 @@ async def update_profile(
     user: User,
     *,
     name: str | None = None,
+    phone: str | None = None,
     avatar_url: str | None = None,
     mfa_enabled: bool | None = None,
+    mfa_secret: str | None = None,
 ) -> User:
     if name is not None:
         user.name = name.strip()
+    if phone is not None:
+        user.phone = phone.strip() or None
     if avatar_url is not None:
         user.avatar_url = avatar_url or None
     if mfa_enabled is not None:
         user.mfa_enabled = mfa_enabled
+    if mfa_secret is not None:
+        user.mfa_secret = mfa_secret
 
     await db.commit()
     await db.refresh(user)
