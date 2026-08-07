@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     auth,
     capture,
     cloudflare_gateway,
+    contact,
     detection,
     devices,
     health,
@@ -42,3 +43,4 @@ api_router.include_router(agent.router)
 api_router.include_router(notifications.router)
 api_router.include_router(inventory.router)
 api_router.include_router(cloudflare_gateway.router)
+api_router.include_router(contact.router, prefix="/contact", tags=["contact"])

@@ -264,3 +264,32 @@ async def send_report_email(
         attachments=[attachment] if attachment else None,
         tags=["report"],
     )
+
+
+async def send_contact_form(
+    *, name: str, email: str, phone: str | None, topic: str, message: str
+) -> bool:
+    """Send contact form submission to the site owner."""
+    phone_line = f"<p><strong>Phone:</strong> {phone}</p>" if phone else ""
+    html = _shell(
+        f"New contact: {topic}",
+        f"""
+        <p><strong>{name}</strong> submitted a contact form on {BRAND}.</p>
+        <p><strong>Topic:</strong> {topic}</p>
+        <p><strong>Email:</strong> <a href="mailto:{email}">{email}</a></p>
+        {phone_line}
+        <div style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:8px;
+             border:1px solid #e2e8f0;">
+          <p style="margin:0;white-space:pre-wrap;">{message}</p>
+        </div>
+        """,
+        footer=f"Reply directly to {email} to respond.",
+    )
+    return await send_email(
+        to_email="samsonbudigila6@gmail.com",
+        to_name="Samson Budigila",
+        subject=f"[{BRAND} Contact] {topic} from {name}",
+        html=html,
+        text=f"New contact from {name} ({email}). Topic: {topic}\n\n{message}",
+        tags=["contact-form"],
+    )
