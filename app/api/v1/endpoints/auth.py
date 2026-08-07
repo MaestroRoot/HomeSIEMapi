@@ -3,6 +3,7 @@ from pydantic import Field, field_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import CurrentIdentity, CurrentUser, DbSession
+from app.core.config import settings
 from app.core.email import send_mfa_otp, send_password_reset_otp, send_welcome_email
 from app.core.errors import AuthError, ServiceUnavailableError
 from app.core.firebase import admin_available, set_password
