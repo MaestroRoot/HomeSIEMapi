@@ -16,7 +16,7 @@ from app.crud.ueva import (
     get_baseline,
     get_risk_score,
     get_user_devices,
-    list_anomalies,
+    list_anomalies as crud_list_anomalies,
     list_risk_scores,
     get_overview,
     update_anomaly_status,
@@ -122,7 +122,7 @@ async def list_anomalies(
     status: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> AnomalyList:
-    rows, total = await list_anomalies(
+    rows, total = await crud_list_anomalies(
         db,
         user.organization_id,
         owner_name=owner_name,
