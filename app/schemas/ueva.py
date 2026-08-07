@@ -54,6 +54,32 @@ class UserRiskList(CamelModel):
     total: int
 
 
+# --- All device users ------------------------------------------------------
+
+
+class DeviceUserRead(CamelModel):
+    """Mtumiaji wa device, pamoja na risk score iwapo ipo."""
+
+    owner_name: str
+    device_count: int
+    has_baseline: bool
+    current_score: int = 0
+    previous_score: int = 0
+    trend: RiskTrend = "stable"
+    open_anomalies: int = 0
+    total_anomalies: int = 0
+    last_updated_at: datetime | None = None
+
+    @field_serializer("owner_name")
+    def _name(self, value: str) -> str:
+        return value
+
+
+class DeviceUserList(CamelModel):
+    items: list[DeviceUserRead]
+    total: int
+
+
 # --- Anomalies ------------------------------------------------------------
 
 

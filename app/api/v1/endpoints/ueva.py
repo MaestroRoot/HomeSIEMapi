@@ -16,6 +16,7 @@ from app.crud.ueva import (
     get_baseline,
     get_risk_score,
     get_user_devices,
+    list_all_device_users,
     list_anomalies as crud_list_anomalies,
     list_risk_scores,
     get_overview,
@@ -26,6 +27,8 @@ from app.schemas.ueva import (
     AnomalyList,
     AnomalyRead,
     AnomalyUpdate,
+    DeviceUserList,
+    DeviceUserRead,
     UebaOverview,
     UserDetail,
     UserRiskList,
@@ -54,6 +57,15 @@ async def list_user_risks(user: CurrentUser, db: DbSession) -> UserRiskList:
     rows = await list_risk_scores(db, user.organization_id)
     return UserRiskList(
         items=[UserRiskRead.model_validate(r) for r in rows],
+        total=len(rows),
+    )
+
+
+@router.get("/ueba/all-users", response_model=DeviceUserList, summary="All device users with optional risk scores")
+async def list_all_users(user: CurrentUser, db: DbSession) -> DeviceUserList:
+    rows = await list_all_device_users(db, user.organization_id)
+    return DeviceUserList(
+        items=[DeviceUserRead.model_validate(r) for r in rows],
         total=len(rows),
     )
 

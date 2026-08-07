@@ -97,6 +97,67 @@ async def list_risk_scores(
     return list((await db.execute(stmt)).scalars())
 
 
+async def list_all_device_users(
+    db: AsyncSession, organization_id: uuid.UUID
+) -> list[dict]:
+    """Rudisha WOTE users wa devices, pamoja na risk score iwapo ipo."""
+    device_users_stmt = (
+        select(
+            Device.owner_name,
+            func.count(Device.id).label("device_count"),
+        )
+        .where(
+            Device.organization_id == organization_id,
+            Device.owner_name.isnot(None),
+            Device.owner_name != "",
+        )
+        .group_by(Device.owner_name)
+        .order_by(Device.owner_name)
+    )
+    rows = (await db.execute(device_users_stmt)).all()
+    owner_names = [r[0] for r in rows]
+    device_counts = {r[0]: r[1] for r in rows}
+
+    if not owner_names:
+        return []
+
+    risk_stmt = select(UserRiskScore).where(
+        UserRiskScore.organization_id == organization_id,
+        UserRiskScore.owner_name.in_(owner_names),
+    )
+    risk_rows = (await db.execute(risk_stmt)).scalars()
+    risk_map = {r.owner_name: r for r in risk_rows}
+
+    result = []
+    for name in owner_names:
+        risk = risk_map.get(name)
+        if risk:
+            result.append({
+                "owner_name": name,
+                "device_count": device_counts[name],
+                "has_baseline": True,
+                "current_score": risk.current_score,
+                "previous_score": risk.previous_score,
+                "trend": risk.trend,
+                "open_anomalies": risk.open_anomalies,
+                "total_anomalies": risk.total_anomalies,
+                "last_updated_at": risk.last_updated_at,
+            })
+        else:
+            result.append({
+                "owner_name": name,
+                "device_count": device_counts[name],
+                "has_baseline": False,
+                "current_score": 0,
+                "previous_score": 0,
+                "trend": "stable",
+                "open_anomalies": 0,
+                "total_anomalies": 0,
+                "last_updated_at": None,
+            })
+    return result
+
+
 async def get_risk_score(
     db: AsyncSession, organization_id: uuid.UUID, owner_name: str
 ) -> UserRiskScore | None:
