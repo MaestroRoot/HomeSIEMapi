@@ -5,8 +5,10 @@ from sqlalchemy.exc import SQLAlchemyError
 import app.models  # noqa: F401  # inahakikisha kila table imesajiliwa kwenye Base.metadata
 
 from app.api.deps import DbSession, RequireOwner
+from app.api.v1.endpoints.nextdns import delete_profile
 from app.core.errors import ServiceUnavailableError
 from app.core.logging import get_logger
+from app.crud import nextdns as nextdns_crud
 from app.db.base import Base
 from app.schemas.common import CamelModel
 
@@ -56,6 +58,15 @@ async def wipe_org_data(user: RequireOwner, db: DbSession) -> WipeResult:
         raise ServiceUnavailableError(
             "The database is unavailable right now.", code="database_unavailable"
         ) from exc
+
+    # Futa pia profile ya NextDNS ya org hii (best-effort) ili isiwe orphan kwenye API.
+    try:
+        cfg = await nextdns_crud.get_for_org(db, user.organization_id)
+        if cfg is not None and cfg.profile_id:
+            await delete_profile(cfg.profile_id)
+            logger.info("NextDNS profile deleted during wipe (org=%s, profile=%s)", user.organization_id, cfg.profile_id)
+    except Exception as exc:  # noqa: BLE001  # wipe haipaswi kuvunjika kwa external call
+        logger.warning("NextDNS profile cleanup during wipe imeshindwa: %s", exc)
 
     logger.warning(
         "Org data wiped: org=%s by=%s deleted=%s",

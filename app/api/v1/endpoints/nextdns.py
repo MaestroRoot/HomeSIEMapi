@@ -44,6 +44,32 @@ def _headers() -> dict[str, str]:
     return {"X-Api-Key": settings.nextdns_api_key or "", "Content-Type": "application/json"}
 
 
+async def delete_profile(profile_id: str | None) -> None:
+    """Delete a profile on NextDNS (best-effort)."""
+    if not profile_id or not settings.nextdns_ready:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            await http.delete(f"{_ND_BASE}/profiles/{profile_id}", headers=_headers())
+    except httpx.HTTPError as exc:
+        logger.warning("NextDNS profile delete imeshindwa (profile=%s): %s", profile_id, exc)
+
+
+async def _find_profile_by_name(name: str) -> str | None:
+    """Reuse a profile that already exists with this name (e.g. left behind after a wipe)."""
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            r = await http.get(f"{_ND_BASE}/profiles", headers=_headers())
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"NextDNS API error: {exc}") from exc
+    if r.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"NextDNS API error: {r.text[:200]}")
+    for profile in (r.json().get("data") or []):
+        if profile.get("name") == name:
+            return profile.get("id")
+    return None
+
+
 def _read(cfg) -> NextDnsRead:
     if cfg is None:
         return NextDnsRead(configured=False)
@@ -90,13 +116,17 @@ async def provision_profile(user: RequireOwner, db: DbSession) -> NextDnsRead:
         raise HTTPException(status_code=502, detail=f"NextDNS API error: {r.text[:200]}")
 
     data = r.json()
-    if data.get("errors"):
+    errors = data.get("errors")
+    if errors and errors[0].get("code") != "duplicate":
         raise HTTPException(
             status_code=502,
-            detail=f"NextDNS API error: {data['errors'][0].get('detail', 'Unknown')}",
+            detail=f"NextDNS API error: {errors[0].get('detail', 'Unknown')}",
         )
 
     profile_id = (data.get("data") or {}).get("id")
+    if not profile_id and errors and errors[0].get("code") == "duplicate":
+        # Profile yenye jina hili tayari ipo kwenye NextDNS (e.g. orphan ya wipe) — itumie.
+        profile_id = await _find_profile_by_name(profile_name)
     if not profile_id:
         raise HTTPException(status_code=502, detail="NextDNS did not return a profile ID")
 
@@ -125,11 +155,7 @@ async def delete_config(user: RequireOwner, db: DbSession) -> Message:
     await crud.delete_for_org(db, user.organization_id)
 
     if profile_id and settings.nextdns_ready:
-        try:
-            async with httpx.AsyncClient(timeout=30) as http:
-                await http.delete(f"{_ND_BASE}/profiles/{profile_id}", headers=_headers())
-        except httpx.HTTPError as exc:
-            logger.warning("NextDNS profile delete imeshindwa (profile=%s): %s", profile_id, exc)
+        await delete_profile(profile_id)
 
     return Message(detail="NextDNS disconnected.", code="nextdns_deleted")
 
