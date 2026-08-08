@@ -92,21 +92,21 @@ class Settings(BaseSettings):
     #: Siri inayowekwa mwishoni mwa webhook URL kama ulinzi wa ziada.
     clickpesa_webhook_secret: str | None = None
 
-    # --- Cloudflare Zero Trust (reseller model) ---------------------------
-    #: Single Cloudflare account credentials for creating/managing locations per org.
-    cloudflare_account_id: str | None = None
-    cloudflare_api_token: str | None = None
-    #: Optional custom domain for DoH (e.g., doh.homesiem.xyz). If set, locations
-    #: get hostnames like `org-{id}.doh.homesiem.xyz` via CNAME.
-    cloudflare_doh_domain: str | None = None
+    # --- NextDNS (reseller model) -----------------------------------------
+    #: NextDNS API key (my.nextdns.io > Account > API key). Single key inatumika
+    #: kuunda/manage profile per org — watumiaji hawapati hii, wao wanapata
+    #: domain + QR pekee kutoka dashboard.
+    nextdns_api_key: str | None = None
+    #: NextDNS account ID (mfano "5f4959"), inatumika kwenye maandiko/UI tu.
+    nextdns_account_id: str | None = None
 
     @property
     def clickpesa_ready(self) -> bool:
         return bool(self.clickpesa_client_id and self.clickpesa_api_key)
 
     @property
-    def cloudflare_gateway_ready(self) -> bool:
-        return bool(self.cloudflare_account_id and self.cloudflare_api_token)
+    def nextdns_ready(self) -> bool:
+        return bool(self.nextdns_api_key)
 
     # --- Password reset OTP ---------------------------------------------
     otp_ttl_minutes: int = 10

@@ -5,7 +5,6 @@ from app.api.v1.endpoints import (
     ai,
     auth,
     capture,
-    cloudflare_gateway,
     contact,
     detection,
     devices,
@@ -15,6 +14,7 @@ from app.api.v1.endpoints import (
     intel,
     inventory,
     invitations,
+    nextdns,
     notifications,
     reports,
     stats,
@@ -43,6 +43,6 @@ api_router.include_router(telemetry.router)
 api_router.include_router(agent.router)
 api_router.include_router(notifications.router)
 api_router.include_router(inventory.router)
-api_router.include_router(cloudflare_gateway.router)
+api_router.include_router(nextdns.router)
 api_router.include_router(ueva.router)
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])

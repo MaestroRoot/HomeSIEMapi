@@ -1,7 +1,7 @@
 """UEBA scoring engine — inakusanya data kutoka modules zote na kugundua anomalies.
 
 Inatumia:
-- SecurityEvent (Cloudflare DNS + network flows)
+- SecurityEvent (NextDNS + network flows)
 - ForensicSnapshot (processes per device)
 - Incident (alerts zilizopita)
 - Device (owner_name mapping)

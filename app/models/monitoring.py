@@ -267,39 +267,42 @@ class SoftwarePackage(UUIDMixin, TimestampMixin, Base):
         return f"<SoftwarePackage {self.name} {self.version}>"
 
 
-class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
-    """Config ya Cloudflare Gateway ya org moja. Backend poller huvuta DNS logs
-    kutoka Cloudflare Zero Trust API na kuziingiza kwa org husika (multi-tenant).
+class NextDnsConfig(UUIDMixin, TimestampMixin, Base):
+    """Config ya NextDNS ya org moja. Backend poller huvuta DNS logs kutoka
+    `api.nextdns.io` na kuziingiza kwa org husika (multi-tenant).
 
-    Reseller model: single Cloudflare account (from settings), location per org.
+    Reseller model: single NextDNS API key (from settings), profile per org.
     """
 
-    __tablename__ = "cloudflare_gateway_configs"
-    __table_args__ = (UniqueConstraint("organization_id", name="uq_cloudflare_gateway_org"),)
+    __tablename__ = "nextdns_configs"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_nextdns_configs_org"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    location_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    doh_subdomain: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    profile_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    profile_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
-        return f"<CloudflareGatewayConfig org={self.organization_id} location={self.location_id}>"
+        return f"<NextDnsConfig org={self.organization_id} profile={self.profile_id}>"
 
     @property
     def doh_hostname(self) -> str | None:
-        """DoH hostname for this org's location (uses Cloudflare's doh_subdomain)."""
-        from app.core.config import settings
-        if settings.cloudflare_doh_domain:
-            return f"org-{self.organization_id.hex[:8]}.{settings.cloudflare_doh_domain}"
-        if self.doh_subdomain:
-            return f"{self.doh_subdomain}.dns.cloudflare-gateway.com"
-        return None
+        """DoH/Private-DNS hostname ya NextDNS profile, mfano `abc123.dns.nextdns.io`."""
+        if not self.profile_id:
+            return None
+        return f"{self.profile_id}.dns.nextdns.io"
+
+    @property
+    def setup_link(self) -> str | None:
+        """link.nextdns.io QR kwa Android (scan-to-setup, hakuna uingizaji wa mkono)."""
+        if not self.profile_id:
+            return None
+        return f"https://link.nextdns.io/{self.profile_id}"
 
 
 class CollectionStream(UUIDMixin, TimestampMixin, Base):
