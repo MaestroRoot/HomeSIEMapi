@@ -43,6 +43,15 @@ async def wipe_org_data(user: RequireOwner, db: DbSession) -> WipeResult:
     Account za watu na organization zinabaki. Subscription inajitengeneza
     upya (kwenye Free plan) mara tu itakapohitajika.
     """
+    # Kama blogi profile ya NextDNS YA KABLA ya wipe (after wipe, row haiwezi kupatikana).
+    profile_id = None
+    try:
+        cfg = await nextdns_crud.get_for_org(db, user.organization_id)
+        if cfg is not None:
+            profile_id = cfg.profile_id
+    except Exception as exc:  # noqa: BLE001  # wipe haipaswi kuvunjika kwa external call
+        logger.warning("NextDNS profile lookup during wipe imeshindwa: %s", exc)
+
     deleted: dict[str, int] = {}
     try:
         for table in _SCOPED_TABLES:
@@ -60,13 +69,9 @@ async def wipe_org_data(user: RequireOwner, db: DbSession) -> WipeResult:
         ) from exc
 
     # Futa pia profile ya NextDNS ya org hii (best-effort) ili isiwe orphan kwenye API.
-    try:
-        cfg = await nextdns_crud.get_for_org(db, user.organization_id)
-        if cfg is not None and cfg.profile_id:
-            await delete_profile(cfg.profile_id)
-            logger.info("NextDNS profile deleted during wipe (org=%s, profile=%s)", user.organization_id, cfg.profile_id)
-    except Exception as exc:  # noqa: BLE001  # wipe haipaswi kuvunjika kwa external call
-        logger.warning("NextDNS profile cleanup during wipe imeshindwa: %s", exc)
+    if profile_id:
+        await delete_profile(profile_id)
+        logger.info("NextDNS profile deleted during wipe (org=%s, profile=%s)", user.organization_id, profile_id)
 
     logger.warning(
         "Org data wiped: org=%s by=%s deleted=%s",
