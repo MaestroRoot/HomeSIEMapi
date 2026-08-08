@@ -70,6 +70,35 @@ async def test_me_inarudisha_user_yule_yule(client):
 
 
 @pytest.mark.asyncio
+async def test_password_reset_inakataa_email_isiyosajiliwa(client):
+    response = await client.post("/auth/password-reset/request", json={"email": "missing@example.com"})
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": "No user was found with this email.",
+        "code": "user_not_found",
+    }
+
+
+@pytest.mark.asyncio
+async def test_password_reset_inatuma_otp_kwa_email_iliyosajiliwa(client, monkeypatch):
+    await client.post("/auth/session", json={}, headers=dev_auth("registered@example.com"))
+
+    async def fake_send_password_reset_otp(**_: str | None) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.auth.send_password_reset_otp", fake_send_password_reset_otp
+    )
+    response = await client.post(
+        "/auth/password-reset/request", json={"email": "REGISTERED@example.com"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "otp_sent"
+
+
+@pytest.mark.asyncio
 async def test_session_ina_rate_limit(client):
     headers = dev_auth("flood@example.com")
 

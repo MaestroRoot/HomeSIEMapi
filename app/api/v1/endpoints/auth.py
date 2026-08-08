@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.deps import CurrentIdentity, CurrentUser, DbSession
 from app.core.config import settings
 from app.core.email import send_mfa_otp, send_password_reset_otp, send_welcome_email
-from app.core.errors import AuthError, ServiceUnavailableError
+from app.core.errors import AuthError, NotFoundError, ServiceUnavailableError
 from app.core.firebase import admin_available, set_password
 from app.core.logging import get_logger
 from app.core.mfa import create_mfa_challenge, verify_mfa_otp
@@ -109,21 +109,21 @@ async def request_password_reset(
     db: DbSession,
     background: BackgroundTasks,
 ) -> Message:
-    """Inatuma OTP ya tarakimu 6 kwenye email.
-
-    Jibu ni lile lile iwe akaunti ipo au haipo. Kama tungejibu tofauti,
-    ukurasa huu ungekuwa njia ya kujua email zipi zina akaunti hapa.
-    """
+    """Inatuma OTP ya tarakimu 6 kwa email ya akaunti iliyosajiliwa."""
     ip = client_key(request.client.host if request.client else None)
     otp_limiter.hit(ip)
 
     email = payload.email.lower()
+    user = await user_crud.get_by_email(db, email)
+    if user is None:
+        raise NotFoundError("No user was found with this email.", code="user_not_found")
+
     code = await reset_crud.create(db, email, ip=ip)
 
-    background.add_task(send_password_reset_otp, to_email=email, name=None, code=code)
+    background.add_task(send_password_reset_otp, to_email=email, name=user.name, code=code)
 
     return Message(
-        detail="If that email has an account, a six digit code is on its way.",
+        detail="A six digit code is on its way.",
         code="otp_sent",
     )
 
