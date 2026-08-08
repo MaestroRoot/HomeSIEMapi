@@ -61,24 +61,79 @@ async def get_config(user: CurrentUser, db: DbSession) -> CloudflareGatewayRead:
 
 @router.post("/provision", response_model=CloudflareGatewayRead, summary="Create Cloudflare Gateway location for this org (owner)")
 async def provision_location(user: RequireOwner, db: DbSession) -> CloudflareGatewayRead:
-    """Create a Gateway location in Cloudflare for this org and save config."""
+    """Create a Gateway location in Cloudflare for this org and save config.
+
+    The DoH endpoint is enabled right away so the iOS/Android configs actually work,
+    and Cloudflare's `doh_subdomain` is stored so we can build the real DoH hostname
+    (e.g. `xyzabc.dns.cloudflare-gateway.com`). Existing rows created by older code
+    (which stored the subdomain in `location_id` and never enabled DoH) are healed.
+    """
     if not settings.cloudflare_gateway_ready:
         raise HTTPException(status_code=503, detail="Cloudflare Gateway not configured on server")
 
+    headers = {"Authorization": f"Bearer {settings.cloudflare_api_token}", "Content-Type": "application/json"}
+    acc = settings.cloudflare_account_id
+
     # Ensure config exists
     cfg = await crud.upsert(db, user.organization_id)
-    if cfg.location_id:
-        # Already provisioned
+
+    async def _enable_doh(location_id: str) -> dict:
+        """Turn on the DoH endpoint for a location and return its (updated) result."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as http:
+                p = await http.patch(
+                    f"{_CF_BASE}/accounts/{acc}/gateway/locations/{location_id}",
+                    headers=headers,
+                    json={"endpoints": {"doh": {"enabled": True, "require_token": False}}},
+                )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Cloudflare API error: {exc}")
+        if p.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Cloudflare API error: {p.text[:200]}")
+        data = p.json()
+        if not data.get("success"):
+            errors = data.get("errors", [{"message": "Unknown error"}])
+            raise HTTPException(status_code=502, detail=f"Cloudflare API error: {errors[0].get('message', 'Unknown')}")
+        return data.get("result", {})
+
+    # Already provisioned cleanly
+    if cfg.location_id and cfg.doh_subdomain:
         return _read(cfg)
+
+    if cfg.location_id and not cfg.doh_subdomain:
+        # Old broken row: location_id may be the UUID (good) or the subdomain (bad).
+        # Look it up by UUID first; if that fails, treat as unprovisioned.
+        result = {}
+        try:
+            async with httpx.AsyncClient(timeout=30) as http:
+                r = await http.get(
+                    f"{_CF_BASE}/accounts/{acc}/gateway/locations/{cfg.location_id}",
+                    headers=headers,
+                )
+            if r.status_code < 400 and r.json().get("success"):
+                result = r.json().get("result", {})
+        except (httpx.HTTPError, ValueError):
+            result = {}
+        if result and result.get("doh_subdomain"):
+            result = await _enable_doh(result["id"]) or result
+            await crud.mark_synced(
+                db, cfg, status="provisioned",
+                location_id=result["id"], location_name=result.get("name", cfg.location_name),
+                doh_subdomain=result.get("doh_subdomain"),
+            )
+            await db.refresh(cfg)
+            return _read(cfg)
+        # Fall through and create a fresh location
+        cfg.location_id = None
+        await db.commit()
+        await db.refresh(cfg)
 
     # Create location in Cloudflare
     location_name = f"home-{user.organization_id.hex[:12]}"
-    headers = {"Authorization": f"Bearer {settings.cloudflare_api_token}", "Content-Type": "application/json"}
-
     try:
         async with httpx.AsyncClient(timeout=30) as http:
             r = await http.post(
-                f"{_CF_BASE}/accounts/{settings.cloudflare_account_id}/gateway/locations",
+                f"{_CF_BASE}/accounts/{acc}/gateway/locations",
                 headers=headers,
                 json={"name": location_name},
             )
@@ -100,14 +155,27 @@ async def provision_location(user: RequireOwner, db: DbSession) -> CloudflareGat
     if not location_id:
         raise HTTPException(status_code=502, detail="Cloudflare did not return location ID")
 
-    # Update config with location info
+    # Enable the DoH endpoint so the profile / Private DNS hostname actually work.
+    try:
+        result = await _enable_doh(location_id)
+        if result:
+            location = result
+            location_id = location.get("id", location_id)
+            location_name = location.get("name", location_name)
+    except HTTPException:
+        raise
+
+    doh_subdomain = location.get("doh_subdomain")
+
     await crud.mark_synced(
         db, cfg, status="provisioned",
-        location_id=location_id, location_name=location_name
+        location_id=location_id, location_name=location_name,
+        doh_subdomain=doh_subdomain,
     )
     await db.refresh(cfg)
 
-    logger.info("Cloudflare Gateway location created (org=%s, location=%s)", user.organization_id, location_id)
+    logger.info("Cloudflare Gateway location created (org=%s, location=%s, doh_subdomain=%s)",
+                user.organization_id, location_id, doh_subdomain)
     return _read(cfg)
 
 

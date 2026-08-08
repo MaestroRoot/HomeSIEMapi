@@ -62,6 +62,7 @@ async def mark_synced(
     last_event_at: datetime | None = None,
     location_id: str | None = None,
     location_name: str | None = None,
+    doh_subdomain: str | None = None,
 ) -> None:
     from datetime import timezone
 
@@ -73,4 +74,6 @@ async def mark_synced(
         cfg.location_id = location_id
     if location_name is not None:
         cfg.location_name = location_name
+    if doh_subdomain is not None:
+        cfg.doh_subdomain = doh_subdomain
     await db.commit()

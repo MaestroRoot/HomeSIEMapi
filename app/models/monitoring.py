@@ -282,6 +282,7 @@ class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
     )
     location_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    doh_subdomain: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -292,13 +293,13 @@ class CloudflareGatewayConfig(UUIDMixin, TimestampMixin, Base):
 
     @property
     def doh_hostname(self) -> str | None:
-        """DoH hostname for this org's location."""
-        if not self.location_id:
-            return None
+        """DoH hostname for this org's location (uses Cloudflare's doh_subdomain)."""
         from app.core.config import settings
         if settings.cloudflare_doh_domain:
             return f"org-{self.organization_id.hex[:8]}.{settings.cloudflare_doh_domain}"
-        return f"{self.location_id}.dns.cloudflare-gateway.com"
+        if self.doh_subdomain:
+            return f"{self.doh_subdomain}.dns.cloudflare-gateway.com"
+        return None
 
 
 class CollectionStream(UUIDMixin, TimestampMixin, Base):
