@@ -78,14 +78,36 @@ async def provision_location(user: RequireOwner, db: DbSession) -> CloudflareGat
     cfg = await crud.upsert(db, user.organization_id)
 
     async def _enable_doh(location_id: str) -> dict:
-        """Turn on the DoH endpoint for a location and return its (updated) result."""
+        """Turn on the DoH endpoint for a location and return its (updated) result.
+
+        Cloudflare's update endpoint is PUT and expects the writable location fields
+        (PATCH returns 405), so we GET the location, enable DoH on it, and PUT it back.
+        """
         try:
             async with httpx.AsyncClient(timeout=30) as http:
-                p = await http.patch(
+                g = await http.get(
                     f"{_CF_BASE}/accounts/{acc}/gateway/locations/{location_id}",
                     headers=headers,
-                    json={"endpoints": {"doh": {"enabled": True, "require_token": False}}},
                 )
+                if g.status_code >= 400 or not g.json().get("success"):
+                    raise HTTPException(status_code=502, detail=f"Cloudflare API error: {g.text[:200]}")
+                result = g.json().get("result", {})
+                endpoints = result.get("endpoints") or {}
+                endpoints["doh"] = {"enabled": True, "require_token": False}
+                body = {
+                    "name": result.get("name", location_id),
+                    "client_default": result.get("client_default", False),
+                    "ecs_support": result.get("ecs_support", False),
+                    "networks": result.get("networks") or [],
+                    "endpoints": endpoints,
+                }
+                p = await http.put(
+                    f"{_CF_BASE}/accounts/{acc}/gateway/locations/{location_id}",
+                    headers=headers,
+                    json=body,
+                )
+        except HTTPException:
+            raise
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Cloudflare API error: {exc}")
         if p.status_code >= 400:
