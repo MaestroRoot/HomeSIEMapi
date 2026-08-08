@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     invitations,
     nextdns,
     notifications,
+    org,
     reports,
     stats,
     subscriptions,
@@ -42,6 +43,7 @@ api_router.include_router(incidents.router)
 api_router.include_router(telemetry.router)
 api_router.include_router(agent.router)
 api_router.include_router(notifications.router)
+api_router.include_router(org.router)
 api_router.include_router(inventory.router)
 api_router.include_router(nextdns.router)
 api_router.include_router(ueva.router)

@@ -63,6 +63,12 @@ async def enroll(payload: EnrollRequest, org_id: SensorOrg, db: DbSession) -> En
 
 @router.get("/agent/{agent_id}/jobs", response_model=list[JobForAgent], summary="Poll pending jobs")
 async def poll_jobs(agent_id: uuid.UUID, org_id: SensorOrg, db: DbSession) -> list[JobForAgent]:
+    agent = await crud.get_agent(db, org_id, agent_id)
+    if agent is None:
+        raise NotFoundError(
+            "This agent is no longer enrolled. Re-enroll with a valid token.",
+            code="agent_not_found",
+        )
     await crud.touch_agent(db, agent_id)
     # Streams zinazoendelea (capture/logs): tengeneza job mpya endapo hakuna
     # inayoendelea. Hii ndiyo inayofanya "Auto" iendelee hata dashboard imefungwa.
