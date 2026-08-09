@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from app.schemas.common import CamelModel
 
