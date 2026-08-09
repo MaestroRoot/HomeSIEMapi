@@ -5,7 +5,7 @@ from app.api.deps import CurrentUser, DbSession, RequireOwner
 from app.core.config import settings
 from app.core.errors import AppError, NotFoundError, ServiceUnavailableError
 from app.core.logging import get_logger
-from app.core.payments import ClickPesaGateway, get_gateway
+from app.core.payments import get_gateway
 from app.core.plans import CURRENCY, PLAN_ORDER, price_of, spec_for
 from app.crud import subscription as sub_crud
 from app.models.enums import PaymentChannel, PaymentMethod, PaymentStatus, Plan
@@ -138,8 +138,6 @@ async def checkout(
             card_expiry_month=card.expiry_month if card else None,
             card_expiry_year=card.expiry_year if card else None,
             card_cvv=card.cvv if card else None,
-            return_url=payload.return_url,
-            cancel_url=payload.cancel_url,
             charge=get_gateway(payload.method).charge,
         )
     except SQLAlchemyError as exc:
@@ -155,17 +153,11 @@ async def checkout(
         price_of(payload.plan),
         payment.reference,
     )
-    # Parse redirect URL from instruction (PesaPal).
-    redirect_url = None
-    if instruction.startswith("redirect:"):
-        redirect_url = instruction[len("redirect:"):]
-        instruction = "Redirecting to PesaPal secure checkout..."
 
     return CheckoutResponse(
         payment=PaymentRead.model_validate(payment),
         subscription=_subscription_read(subscription),
         instruction=instruction,
-        redirect_url=redirect_url,
     )
 
 
@@ -196,104 +188,3 @@ async def cancel_payment(reference: str, user: RequireOwner, db: DbSession) -> P
 
     updated = await sub_crud.fail_payment(db, payment, "Cancelled by the customer.")
     return PaymentRead.model_validate(updated)
-
-
-def _status_from_webhook(payload: dict, data: dict) -> PaymentStatus | None:
-    """Kadirio la status kutoka body ya webhook (fallback ikiwa verify imeshindwa)."""
-    event = str(payload.get("event") or "").upper()
-    raw = str(data.get("status") or payload.get("status") or "").upper()
-    if event == "PAYMENT RECEIVED" or raw in ("SUCCESS", "SETTLED"):
-        return PaymentStatus.SUCCEEDED
-    if event == "PAYMENT FAILED" or raw == "FAILED":
-        return PaymentStatus.FAILED
-    return None
-
-
-@router.post("/webhook/{secret}", summary="ClickPesa payment webhook (public)")
-async def clickpesa_webhook(secret: str, payload: dict, db: DbSession) -> dict:
-    """Inaitwa na ClickPesa malipo yanapobadilika hali.
-
-    `secret` kwenye URL ni ulinzi wa kwanza. Kisha HATUAMINI body ya webhook —
-    tunauliza ClickPesa status HALISI (`verify_status`) kabla ya kupandisha
-    kifurushi, ili mtu asije kutuma webhook ya bandia kupata upgrade bure.
-    """
-    if not settings.clickpesa_webhook_secret or secret != settings.clickpesa_webhook_secret:
-        raise NotFoundError("Not found.", code="not_found")
-
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    order_ref = data.get("orderReference") or payload.get("orderReference")
-    if not order_ref:
-        return {"detail": "ignored", "reason": "no orderReference"}
-
-    payment = await sub_crud.get_payment_by_reference(db, str(order_ref))
-    if payment is None:
-        logger.warning("Webhook ya ClickPesa: reference haijulikani %s", order_ref)
-        return {"detail": "unknown reference"}
-
-    gateway = get_gateway()
-    final: PaymentStatus | None = None
-    if isinstance(gateway, ClickPesaGateway):
-        final = await gateway.verify_status(str(order_ref))
-    if final is None:  # verification haikupatikana — tumia body (URL ina siri)
-        final = _status_from_webhook(payload, data)
-
-    if final is PaymentStatus.SUCCEEDED:
-        await sub_crud.confirm_payment(db, payment)
-        return {"detail": "confirmed"}
-    if final is PaymentStatus.FAILED:
-        await sub_crud.fail_payment(db, payment, str(data.get("message") or "Payment failed."))
-        return {"detail": "failed"}
-    return {"detail": "acknowledged"}
-
-
-# --- PesaPal ----------------------------------------------------------------
-
-@router.post("/webhook/pesapal", summary="PesaPal IPN webhook (public)")
-async def pesapal_webhook(payload: dict, db: DbSession) -> dict:
-    """Inaitwa na PesaPal (IPN) malipo yanapobadilika hali.
-    
-    PesaPal inatuma IPN (Instant Payment Notification) yenye:
-    - OrderTrackingId: ID ya order kwenye PesaPal
-    - OrderMerchantReference: Reference yetu (payment reference)
-    - OrderNotificationType: "IPNCHANGE"
-    
-    Tunahakiki status halisi kupitia GetTransactionStatus API.
-    """
-    order_tracking_id = payload.get("OrderTrackingId")
-    merchant_reference = payload.get("OrderMerchantReference")
-    notification_type = payload.get("OrderNotificationType")
-
-    if not order_tracking_id or not merchant_reference:
-        return {"detail": "ignored", "reason": "missing parameters"}
-
-    payment = await sub_crud.get_payment_by_reference(db, merchant_reference)
-    if payment is None:
-        logger.warning("PesaPal IPN: unknown reference %s", merchant_reference)
-        return {"detail": "unknown reference"}
-
-    # Verify status with PesaPal API
-    from app.core.payments import PesaPalGateway
-    gateway = get_gateway(PaymentMethod.BANK_CARD)
-    final_status = None
-    
-    if isinstance(gateway, PesaPalGateway):
-        final_status = await gateway.verify_status(order_tracking_id)
-    
-    if final_status is None:
-        # Fallback: can't verify, acknowledge but don't confirm
-        logger.warning("PesaPal IPN: could not verify status for %s", order_tracking_id)
-        return {"detail": "acknowledged", "status": "unverified"}
-
-    if final_status is PaymentStatus.SUCCEEDED:
-        if payment.status is not PaymentStatus.SUCCEEDED:
-            await sub_crud.confirm_payment(db, payment)
-            logger.info("PesaPal IPN confirmed: ref=%s order=%s", merchant_reference, order_tracking_id)
-        return {"detail": "confirmed", "status": "succeeded"}
-    
-    if final_status is PaymentStatus.FAILED:
-        if payment.status is not PaymentStatus.FAILED:
-            await sub_crud.fail_payment(db, payment, "Payment failed via PesaPal")
-            logger.info("PesaPal IPN failed: ref=%s order=%s", merchant_reference, order_tracking_id)
-        return {"detail": "failed", "status": "failed"}
-
-    return {"detail": "acknowledged", "status": final_status.value}

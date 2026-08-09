@@ -183,9 +183,6 @@ class CheckoutRequest(CamelModel):
     msisdn: str | None = None
     #: Card pekee.
     card: CardDetails | None = None
-    #: PesaPal redirect URLs.
-    return_url: str | None = None
-    cancel_url: str | None = None
 
     @field_validator("msisdn")
     @classmethod
@@ -204,10 +201,6 @@ class CheckoutRequest(CamelModel):
             if not self.msisdn:
                 raise ValueError("A phone number is required for mobile money.")
             self.card = None
-        elif self.method in (PaymentMethod.PESAPAL,):
-            # PesaPal haitaji card na msisdn - wanashughulikia kwenye checkout yao
-            self.msisdn = None
-            self.card = None
         else:
             if self.card is None:
                 raise ValueError("Card details are required for a bank payment.")
@@ -220,5 +213,3 @@ class CheckoutResponse(CamelModel):
     subscription: SubscriptionRead
     #: Maelezo ya kumwambia mteja afanye nini sasa (mfano kuthibitisha USSD).
     instruction: str
-    #: URL ya redirect (PesaPal) — frontend inaredirect hapa.
-    redirect_url: str | None = None

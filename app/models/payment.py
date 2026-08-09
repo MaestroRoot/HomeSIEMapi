@@ -19,7 +19,7 @@ class Payment(UUIDMixin, TimestampMixin, Base):
     """Jaribio moja la malipo.
 
     HATARI YA PCI: table hii HAIHIFADHI namba kamili ya card, expiry wala CVV,
-    na haitawahi. Card inapita moja kwa moja kwa payment gateway (ClickPesa),
+    na haitawahi. Card inapita moja kwa moja kwa payment gateway,
     sisi tunabaki na `card_last4` + `card_brand` kwa ajili ya kumkumbusha mteja
     alilipa kwa card ipi. Kwa mobile money tunahifadhi namba ya simu kwa sababu
     ndiyo kitambulisho cha muamala, sio siri ya malipo.
@@ -87,9 +87,9 @@ class Payment(UUIDMixin, TimestampMixin, Base):
 
     #: Reference yetu tunayompa gateway, unique ili retry isilipe mara mbili.
     reference: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    #: Reference inayotoka ClickPesa ikishajibu.
+    #: Reference inayotoka gateway ikishajibu.
     provider_reference: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
-    provider: Mapped[str] = mapped_column(String(32), default="clickpesa", nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
 
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

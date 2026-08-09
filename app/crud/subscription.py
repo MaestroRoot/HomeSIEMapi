@@ -155,7 +155,7 @@ async def create_payment_record(
     method: PaymentMethod,
     channel: PaymentChannel,
     reference: str,
-    provider: str = "clickpesa",
+    provider: str = "manual",
 ) -> Payment:
     payment = Payment(
         organization_id=organization_id,
@@ -192,8 +192,6 @@ async def start_checkout(
     card_expiry_month: int | None = None,
     card_expiry_year: int | None = None,
     card_cvv: str | None = None,
-    return_url: str | None = None,
-    cancel_url: str | None = None,
     charge: "GatewayCall",
 ) -> tuple[Payment, Subscription, str]:
     """Inarekodi malipo, inapiga gateway, kisha inaweka subscription 'pending'.
@@ -234,8 +232,6 @@ async def start_checkout(
         card_expiry_month=card_expiry_month,
         card_expiry_year=card_expiry_year,
         card_cvv=card_cvv,
-        return_url=return_url,
-        cancel_url=cancel_url,
     )
 
     payment.status = result.status
