@@ -217,3 +217,5 @@ class CheckoutResponse(CamelModel):
     subscription: SubscriptionRead
     #: Maelezo ya kumwambia mteja afanye nini sasa (mfano kuthibitisha USSD).
     instruction: str
+    #: URL ya 3DS authentication (PayPal card) — frontend inaredirect hapa.
+    redirect_url: str | None = None

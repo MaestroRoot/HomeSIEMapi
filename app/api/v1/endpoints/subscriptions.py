@@ -157,10 +157,17 @@ async def checkout(
         price_of(payload.plan),
         payment.reference,
     )
+    # Parse 3DS redirect URL from instruction (PayPal card payments).
+    redirect_url = None
+    if instruction.startswith("3DS authentication required: "):
+        redirect_url = instruction[len("3DS authentication required: "):]
+        instruction = "3D Secure authentication required to complete payment."
+
     return CheckoutResponse(
         payment=PaymentRead.model_validate(payment),
         subscription=_subscription_read(subscription),
         instruction=instruction,
+        redirect_url=redirect_url,
     )
 
 
