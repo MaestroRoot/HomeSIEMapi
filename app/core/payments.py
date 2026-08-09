@@ -40,6 +40,7 @@ CHANNEL_LABELS: dict[PaymentChannel, str] = {
     PaymentChannel.AIRTEL_MONEY: "Airtel Money",
     PaymentChannel.CARD: "Bank card",
     PaymentChannel.PAYPAL: "PayPal",
+    PaymentChannel.PESAPAL: "PesaPal",
 }
 
 
@@ -101,6 +102,8 @@ class ManualGateway:
         card_expiry_month: int | None = None,
         card_expiry_year: int | None = None,
         card_cvv: str | None = None,
+        return_url: str | None = None,
+        cancel_url: str | None = None,
     ) -> GatewayResult:
         label = CHANNEL_LABELS[channel]
         if method is PaymentMethod.MOBILE_MONEY:
@@ -157,6 +160,8 @@ class ClickPesaGateway:
         card_expiry_month: int | None = None,
         card_expiry_year: int | None = None,
         card_cvv: str | None = None,
+        return_url: str | None = None,
+        cancel_url: str | None = None,
     ) -> GatewayResult:
         # Card kupitia ClickPesa ni hosted-checkout tofauti (haijaunganishwa
         # bado); irudishe kama manual ili isivunje flow.
@@ -277,6 +282,180 @@ class PayPalGateway:
         self._mode = settings.paypal_mode
         self._base = "https://api-m.paypal.com" if self._mode == "live" else "https://api-m.sandbox.paypal.com"
 
+
+class PesaPalGateway:
+    """Gateway ya PesaPal API 3.0. Inashughulikia card payments (Visa, Mastercard, AMEX)
+    na mobile money (M-Pesa, Tigo Pesa, Airtel Money).
+    
+    PesaPal ni rahisi: 
+    1. Authenticate → pata access token
+    2. SubmitOrderRequest → pata redirect URL
+    3. Mteja anaenda kwenye redirect URL, ana-chagua payment method
+    4. PesaPal inatuma IPN (Instant Payment Notification)
+    5. Sisi tunahakiki status na kurejesha result
+    
+    USD currency: PesaPal inashughulikia USD, hivyo tunaconvert TZS → USD.
+    """
+
+    name = "pesapal"
+
+    def __init__(self) -> None:
+        self._consumer_key = settings.pesapal_consumer_key or ""
+        self._consumer_secret = settings.pesapal_consumer_secret or ""
+        self._mode = settings.pesapal_mode
+        self._base = "https://pay.pesapal.com/v3" if self._mode == "live" else "https://cybqa.pesapal.com/pesapalv3"
+        self._ipn_url = settings.pesapal_ipn_url or ""
+        self._ipn_id = settings.pesapal_ipn_id or ""
+
+    async def _token(self, http: httpx.AsyncClient) -> str:
+        """Pata PesaPal access token (inaisha baada ya dakika 5)."""
+        r = await http.post(
+            f"{self._base}/api/Auth/RequestToken",
+            json={
+                "consumer_key": self._consumer_key,
+                "consumer_secret": self._consumer_secret,
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+        token = data.get("token")
+        if not token:
+            raise RuntimeError(f"PesaPal haijatoa token: {data}")
+        return token
+
+    async def charge(
+        self,
+        *,
+        reference: str,
+        amount_tzs: int,
+        method: PaymentMethod,
+        channel: PaymentChannel,
+        msisdn: str | None = None,
+        card_last4: str | None = None,
+        card_brand: str | None = None,
+        card_number: str | None = None,
+        card_holder: str | None = None,
+        card_expiry_month: int | None = None,
+        card_expiry_year: int | None = None,
+        card_cvv: str | None = None,
+        return_url: str | None = None,
+        cancel_url: str | None = None,
+    ) -> GatewayResult:
+        """PesaPal card payment — ina-create order na kurejesha redirect URL.
+        
+        PesaPal inashughulikia card payments moja kwa moja (Visa, Mastercard, AMEX).
+        Mteja anaenda kwenye redirect URL, ana-chagua card, na anaingiza details.
+        """
+        if method is not PaymentMethod.BANK_CARD:
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction="PesaPal currently only supports card payments.",
+                failure_reason="unsupported_method",
+            )
+
+        TZS_PER_USD = 2550
+        amount_usd = max(1.00, round(amount_tzs / TZS_PER_USD, 2))
+
+        token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+
+        body = {
+            "id": reference[:50],  # PesaPal max 50 chars
+            "currency": "USD",
+            "amount": amount_usd,
+            "description": f"HomeSIEM subscription — TSh {amount_tzs:,} (≈${amount_usd:.2f} USD)",
+            "callback_url": return_url or self._ipn_url,
+            "redirect_mode": "TOP_WINDOW",
+            "notification_id": self._ipn_id,  # IPN ID from registration
+            "branch": "HomeSIEM",
+            "billing_address": {
+                "email_address": "",  # Will be filled from user data
+                "phone_number": msisdn or "",
+                "country_code": "TZ",
+                "first_name": card_holder or "",
+                "last_name": "",
+                "line_1": "",
+                "city": "",
+                "state": "",
+                "postal_code": "",
+                "zip_code": "",
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as http:
+                r = await http.post(
+                    f"{self._base}/api/Transactions/SubmitOrderRequest",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                )
+        except httpx.HTTPError as exc:
+            logger.error("PesaPal charge imeshindwa: ref=%s err=%s", reference, exc)
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction="Could not reach PesaPal. Please try again.",
+                failure_reason="pesapal_unreachable",
+            )
+
+        if r.status_code >= 400:
+            detail = _extract_message(r)
+            logger.warning("PesaPal charge %s: ref=%s %s", r.status_code, reference, detail)
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction=f"Card payment failed: {detail}",
+                failure_reason=detail[:200],
+            )
+
+        data = r.json()
+        order_tracking_id = data.get("order_tracking_id")
+        redirect_url = data.get("redirect_url")
+
+        if not redirect_url:
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=order_tracking_id,
+                instruction="PesaPal did not return a payment URL.",
+                failure_reason="no_redirect_url",
+            )
+
+        logger.info(
+            "PesaPal order created: ref=%s order_id=%s", reference, order_tracking_id
+        )
+        return GatewayResult(
+            status=PaymentStatus.PROCESSING,
+            provider_reference=order_tracking_id,
+            instruction=f"redirect:{redirect_url}",
+        )
+
+    async def verify_status(self, order_tracking_id: str) -> PaymentStatus | None:
+        """Angalia PesaPal order status."""
+        try:
+            token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+            r = await httpx.AsyncClient(timeout=_TIMEOUT).get(
+                f"{self._base}/api/Transactions/GetTransactionStatus",
+                params={"orderTrackingId": order_tracking_id},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.HTTPError:
+            return None
+        if r.status_code >= 400:
+            return None
+        data = r.json()
+        status_code = data.get("status_code")
+        # PesaPal status codes: 0=INVALID, 1=COMPLETED, 2=FAILED, 3=REVERSED
+        if status_code == 1:
+            return PaymentStatus.SUCCEEDED
+        if status_code in (2, 3):
+            return PaymentStatus.FAILED
+        if status_code == 0:
+            return PaymentStatus.CANCELLED
+        return PaymentStatus.PROCESSING
+
     async def _token(self, http: httpx.AsyncClient) -> str:
         """Pata OAuth2 access token (inaisha baada ya saa 1)."""
         import base64
@@ -304,6 +483,8 @@ class PayPalGateway:
         card_expiry_month: int | None = None,
         card_expiry_year: int | None = None,
         card_cvv: str | None = None,
+        return_url: str | None = None,
+        cancel_url: str | None = None,
     ) -> GatewayResult:
         """Malipo ya card moja kwa moja kupitia PayPal Orders API.
 
@@ -513,14 +694,18 @@ def _extract_message(r: httpx.Response) -> str:
         return r.text[:200] or f"HTTP {r.status_code}"
 
 
-def get_gateway(method: PaymentMethod | None = None) -> ManualGateway | ClickPesaGateway | PayPalGateway:
+def get_gateway(method: PaymentMethod | None = None) -> ManualGateway | ClickPesaGateway | PayPalGateway | PesaPalGateway:
     """Sehemu moja ya kuchagua gateway kulingana na njia ya malipo.
 
-    PayPal inachaguliwa kwa PAYPAL pekee. ClickPesa kwa mobile money.
+    PayPal inachaguliwa kwa PAYPAL pekee.
+    PesaPal inachaguliwa kwa BANK_CARD (card payments).
+    ClickPesa kwa mobile money.
     Manual ni fallback.
     """
     if method is PaymentMethod.PAYPAL and settings.paypal_ready:
         return PayPalGateway()
+    if method is PaymentMethod.BANK_CARD and settings.pesapal_ready:
+        return PesaPalGateway()
     if settings.clickpesa_ready:
         return ClickPesaGateway()
     return ManualGateway()

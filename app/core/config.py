@@ -98,6 +98,21 @@ class Settings(BaseSettings):
     paypal_mode: Literal["sandbox", "live"] = "sandbox"
     paypal_webhook_id: str | None = None
 
+    # --- Payments (PesaPal) ----------------------------------------------
+    #: PesaPal API 3.0 credentials. Consumer key/secret hutoka kwenye
+    #: merchant dashboard: https://www.pesapal.com/dashboard
+    pesapal_consumer_key: str | None = None
+    pesapal_consumer_secret: str | None = None
+    pesapal_mode: Literal["sandbox", "live"] = "sandbox"
+    #: IPN (Instant Payment Notification) URL. PesaPal inatuma status updates
+    #: kwenye hii URL. Lazima iwe publicly accessible.
+    pesapal_ipn_url: str | None = None
+    #: IPN ID ya PesaPal (IPN registration inapata hii). Lazima iwekwe
+    #: kabla ya SubmitOrderRequest.
+    pesapal_ipn_id: str | None = None
+    #: Webhook secret for additional security (optional).
+    pesapal_webhook_secret: str | None = None
+
     # --- NextDNS (reseller model) -----------------------------------------
     #: NextDNS API key (my.nextdns.io > Account > API key). Single key inatumika
     #: kuunda/manage profile per org — watumiaji hawapati hii, wao wanapata
@@ -113,6 +128,10 @@ class Settings(BaseSettings):
     @property
     def paypal_ready(self) -> bool:
         return bool(self.paypal_client_id and self.paypal_client_secret)
+
+    @property
+    def pesapal_ready(self) -> bool:
+        return bool(self.pesapal_consumer_key and self.pesapal_consumer_secret)
 
     @property
     def nextdns_ready(self) -> bool:

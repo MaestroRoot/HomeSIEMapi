@@ -142,6 +142,8 @@ async def checkout(
             card_expiry_month=card.expiry_month if card else None,
             card_expiry_year=card.expiry_year if card else None,
             card_cvv=card.cvv if card else None,
+            return_url=payload.return_url,
+            cancel_url=payload.cancel_url,
             charge=get_gateway(payload.method).charge,
         )
     except SQLAlchemyError as exc:
@@ -157,11 +159,14 @@ async def checkout(
         price_of(payload.plan),
         payment.reference,
     )
-    # Parse 3DS redirect URL from instruction (PayPal card payments).
+    # Parse redirect URLs from instruction (PayPal 3DS or PesaPal).
     redirect_url = None
     if instruction.startswith("3DS authentication required: "):
         redirect_url = instruction[len("3DS authentication required: "):]
         instruction = "3D Secure authentication required to complete payment."
+    elif instruction.startswith("redirect:"):
+        redirect_url = instruction[len("redirect:"):]
+        instruction = "Redirecting to PesaPal secure checkout..."
 
     return CheckoutResponse(
         payment=PaymentRead.model_validate(payment),
@@ -416,3 +421,56 @@ async def paypal_webhook(payload: dict, db: DbSession) -> dict:
         return {"detail": "confirmed"}
 
     return {"detail": "ignored", "event_type": event_type}
+
+
+# --- PesaPal ----------------------------------------------------------------
+
+@router.post("/webhook/pesapal", summary="PesaPal IPN webhook (public)")
+async def pesapal_webhook(payload: dict, db: DbSession) -> dict:
+    """Inaitwa na PesaPal (IPN) malipo yanapobadilika hali.
+    
+    PesaPal inatuma IPN (Instant Payment Notification) yenye:
+    - OrderTrackingId: ID ya order kwenye PesaPal
+    - OrderMerchantReference: Reference yetu (payment reference)
+    - OrderNotificationType: "IPNCHANGE"
+    
+    Tunahakiki status halisi kupitia GetTransactionStatus API.
+    """
+    order_tracking_id = payload.get("OrderTrackingId")
+    merchant_reference = payload.get("OrderMerchantReference")
+    notification_type = payload.get("OrderNotificationType")
+
+    if not order_tracking_id or not merchant_reference:
+        return {"detail": "ignored", "reason": "missing parameters"}
+
+    payment = await sub_crud.get_payment_by_reference(db, merchant_reference)
+    if payment is None:
+        logger.warning("PesaPal IPN: unknown reference %s", merchant_reference)
+        return {"detail": "unknown reference"}
+
+    # Verify status with PesaPal API
+    from app.core.payments import PesaPalGateway
+    gateway = get_gateway(PaymentMethod.BANK_CARD)
+    final_status = None
+    
+    if isinstance(gateway, PesaPalGateway):
+        final_status = await gateway.verify_status(order_tracking_id)
+    
+    if final_status is None:
+        # Fallback: can't verify, acknowledge but don't confirm
+        logger.warning("PesaPal IPN: could not verify status for %s", order_tracking_id)
+        return {"detail": "acknowledged", "status": "unverified"}
+
+    if final_status is PaymentStatus.SUCCEEDED:
+        if payment.status is not PaymentStatus.SUCCEEDED:
+            await sub_crud.confirm_payment(db, payment)
+            logger.info("PesaPal IPN confirmed: ref=%s order=%s", merchant_reference, order_tracking_id)
+        return {"detail": "confirmed", "status": "succeeded"}
+    
+    if final_status is PaymentStatus.FAILED:
+        if payment.status is not PaymentStatus.FAILED:
+            await sub_crud.fail_payment(db, payment, "Payment failed via PesaPal")
+            logger.info("PesaPal IPN failed: ref=%s order=%s", merchant_reference, order_tracking_id)
+        return {"detail": "failed", "status": "failed"}
+
+    return {"detail": "acknowledged", "status": final_status.value}

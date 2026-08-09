@@ -183,6 +183,9 @@ class CheckoutRequest(CamelModel):
     msisdn: str | None = None
     #: Card pekee.
     card: CardDetails | None = None
+    #: PesaPal/PayPal redirect URLs.
+    return_url: str | None = None
+    cancel_url: str | None = None
 
     @field_validator("msisdn")
     @classmethod
