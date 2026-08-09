@@ -1,6 +1,7 @@
 """Models zote zina-import hapa ili Alembic ione metadata kamili."""
 
 from app.db.base import Base
+from app.models.dashboard import Dashboard, DashboardWidget
 from app.models.enums import (
     CHANNELS_BY_METHOD,
     PLAN_RANK,
@@ -39,6 +40,8 @@ __all__ = [
     "Agent",
     "AgentJob",
     "CHANNELS_BY_METHOD",
+    "Dashboard",
+    "DashboardWidget",
     "DetectionRule",
     "Device",
     "ForensicSnapshot",

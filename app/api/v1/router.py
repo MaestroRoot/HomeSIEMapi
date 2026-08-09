@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     auth,
     capture,
     contact,
+    dashboards,
     detection,
     devices,
     health,
@@ -47,4 +48,5 @@ api_router.include_router(org.router)
 api_router.include_router(inventory.router)
 api_router.include_router(nextdns.router)
 api_router.include_router(ueva.router)
+api_router.include_router(dashboards.router)
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])

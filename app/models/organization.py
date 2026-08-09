@@ -8,6 +8,7 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 from app.models.enums import Plan
 
 if TYPE_CHECKING:
+    from app.models.dashboard import Dashboard
     from app.models.payment import Payment
     from app.models.security import Invitation
     from app.models.subscription import Subscription
@@ -38,6 +39,9 @@ class Organization(UUIDMixin, TimestampMixin, Base):
         back_populates="organization", cascade="all, delete-orphan"
     )
     invitations: Mapped[list["Invitation"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+    dashboards: Mapped[list["Dashboard"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
 
