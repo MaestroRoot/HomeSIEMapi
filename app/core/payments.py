@@ -395,6 +395,7 @@ class PesaPalGateway:
             )
 
         data = r.json()
+        logger.info("PesaPal response: %s", data)
         order_tracking_id = data.get("order_tracking_id")
         redirect_url = data.get("redirect_url")
 
