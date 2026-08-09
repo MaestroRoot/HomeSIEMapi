@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     #: Siri inayowekwa mwishoni mwa webhook URL kama ulinzi wa ziada.
     clickpesa_webhook_secret: str | None = None
 
+    # --- Payments (PayPal) ----------------------------------------------
+    paypal_client_id: str | None = None
+    paypal_client_secret: str | None = None
+    paypal_mode: Literal["sandbox", "live"] = "sandbox"
+    paypal_webhook_id: str | None = None
+
     # --- NextDNS (reseller model) -----------------------------------------
     #: NextDNS API key (my.nextdns.io > Account > API key). Single key inatumika
     #: kuunda/manage profile per org — watumiaji hawapati hii, wao wanapata
@@ -103,6 +109,10 @@ class Settings(BaseSettings):
     @property
     def clickpesa_ready(self) -> bool:
         return bool(self.clickpesa_client_id and self.clickpesa_api_key)
+
+    @property
+    def paypal_ready(self) -> bool:
+        return bool(self.paypal_client_id and self.paypal_client_secret)
 
     @property
     def nextdns_ready(self) -> bool:

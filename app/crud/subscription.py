@@ -135,6 +135,47 @@ async def get_payment_by_reference(db: AsyncSession, reference: str) -> Payment 
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def get_payment_by_provider_reference(db: AsyncSession, provider_reference: str) -> Payment | None:
+    stmt = (
+        select(Payment)
+        .where(Payment.provider_reference == provider_reference)
+        .options(selectinload(Payment.subscription))
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def create_payment_record(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    initiated_by_id: uuid.UUID,
+    plan: Plan,
+    amount_tzs: int,
+    method: PaymentMethod,
+    channel: PaymentChannel,
+    reference: str,
+    provider: str = "clickpesa",
+) -> Payment:
+    payment = Payment(
+        organization_id=organization_id,
+        subscription_id=subscription_id,
+        initiated_by_id=initiated_by_id,
+        plan=plan,
+        amount_tzs=amount_tzs,
+        currency=CURRENCY,
+        method=method,
+        channel=channel,
+        status=PaymentStatus.PROCESSING,
+        reference=reference,
+        provider=provider,
+    )
+    db.add(payment)
+    await db.flush()
+    await db.refresh(payment)
+    return payment
+
+
 async def start_checkout(
     db: AsyncSession,
     *,

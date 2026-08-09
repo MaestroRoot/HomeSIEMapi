@@ -39,6 +39,7 @@ CHANNEL_LABELS: dict[PaymentChannel, str] = {
     PaymentChannel.HALOPESA: "HaloPesa",
     PaymentChannel.AIRTEL_MONEY: "Airtel Money",
     PaymentChannel.CARD: "Bank card",
+    PaymentChannel.PAYPAL: "PayPal",
 }
 
 
@@ -249,6 +250,119 @@ class ClickPesaGateway:
         return None
 
 
+class PayPalGateway:
+    """Gateway ya PayPal REST API. Ina-create order na kurejesha approval URL."""
+
+    name = "paypal"
+
+    def __init__(self) -> None:
+        self._client_id = settings.paypal_client_id or ""
+        self._client_secret = settings.paypal_client_secret or ""
+        self._mode = settings.paypal_mode
+        self._base = "https://api-m.paypal.com" if self._mode == "live" else "https://api-m.sandbox.paypal.com"
+
+    async def _token(self, http: httpx.AsyncClient) -> str:
+        """Pata OAuth2 access token (inaisha baada ya saa 1)."""
+        import base64
+        creds = base64.b64encode(f"{self._client_id}:{self._client_secret}".encode()).decode()
+        r = await http.post(
+            f"{self._base}/v1/oauth2/token",
+            headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"},
+            content="grant_type=client_credentials",
+        )
+        r.raise_for_status()
+        return r.json()["access_token"]
+
+    async def create_order(
+        self,
+        *,
+        reference: str,
+        amount_tzs: int,
+        return_url: str,
+        cancel_url: str,
+    ) -> dict:
+        """Create PayPal order na kurudisha {id, approve_url}."""
+        token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+        r = await httpx.AsyncClient(timeout=_TIMEOUT).post(
+            f"{self._base}/v2/checkout/orders",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={
+                "intent": "CAPTURE",
+                "purchase_units": [{
+                    "reference_id": reference,
+                    "amount": {
+                        "currency_code": "TZS",
+                        "value": str(amount_tzs),
+                    },
+                    "description": f"HomeSIEM subscription — TSh {amount_tzs:,}",
+                }],
+                "application_context": {
+                    "brand_name": "HomeSIEM",
+                    "landing_page": "BILLING",
+                    "shipping_preference": "NO_SHIPPING",
+                    "return_url": return_url,
+                    "cancel_url": cancel_url,
+                },
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+        approve_url = next(
+            (link["href"] for link in data.get("links", []) if link.get("rel") == "approve"),
+            "",
+        )
+        return {"id": data["id"], "approve_url": approve_url}
+
+    async def capture_order(self, order_id: str) -> GatewayResult:
+        """Capture order baada ya user ku-approve."""
+        token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+        r = await httpx.AsyncClient(timeout=_TIMEOUT).post(
+            f"{self._base}/v2/checkout/orders/{order_id}/capture",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        if r.status_code >= 400:
+            detail = _extract_message(r)
+            logger.warning("PayPal capture %s: order_id=%s %s", r.status_code, order_id, detail)
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=order_id,
+                instruction=f"PayPal payment could not be captured: {detail}",
+                failure_reason=detail[:200],
+            )
+        data = r.json()
+        status_str = data.get("status", "")
+        if status_str == "COMPLETED":
+            return GatewayResult(
+                status=PaymentStatus.SUCCEEDED,
+                provider_reference=order_id,
+                instruction="PayPal payment captured successfully.",
+            )
+        return GatewayResult(
+            status=PaymentStatus.PROCESSING,
+            provider_reference=order_id,
+            instruction=f"PayPal order status: {status_str}",
+        )
+
+    async def verify_status(self, order_id: str) -> PaymentStatus | None:
+        """Angalia PayPal order status."""
+        try:
+            token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+            r = await httpx.AsyncClient(timeout=_TIMEOUT).get(
+                f"{self._base}/v2/checkout/orders/{order_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.HTTPError:
+            return None
+        if r.status_code >= 400:
+            return None
+        status_str = r.json().get("status", "")
+        if status_str == "COMPLETED":
+            return PaymentStatus.SUCCEEDED
+        if status_str in ("VOIDED", "PAYER_ACTION_REQUIRED"):
+            return PaymentStatus.FAILED
+        return PaymentStatus.PROCESSING
+
+
 def _extract_message(r: httpx.Response) -> str:
     try:
         data = r.json()
@@ -259,8 +373,10 @@ def _extract_message(r: httpx.Response) -> str:
         return r.text[:200] or f"HTTP {r.status_code}"
 
 
-def get_gateway() -> ManualGateway | ClickPesaGateway:
-    """Sehemu moja ya kuchagua gateway. ClickPesa ikiwa credentials zipo."""
+def get_gateway() -> ManualGateway | ClickPesaGateway | PayPalGateway:
+    """Sehemu moja ya kuchagua gateway. PayPal au ClickPesa ikiwa credentials zipo."""
+    if settings.paypal_ready:
+        return PayPalGateway()
     if settings.clickpesa_ready:
         return ClickPesaGateway()
     return ManualGateway()

@@ -201,6 +201,10 @@ class CheckoutRequest(CamelModel):
             if not self.msisdn:
                 raise ValueError("A phone number is required for mobile money.")
             self.card = None
+        elif self.method is PaymentMethod.PAYPAL:
+            # PayPal haitaji card na msisdn
+            self.msisdn = None
+            self.card = None
         else:
             if self.card is None:
                 raise ValueError("Card details are required for a bank payment.")
