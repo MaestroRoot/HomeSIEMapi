@@ -187,6 +187,11 @@ async def start_checkout(
     msisdn: str | None,
     card_last4: str | None,
     card_brand: str | None,
+    card_number: str | None = None,
+    card_holder: str | None = None,
+    card_expiry_month: int | None = None,
+    card_expiry_year: int | None = None,
+    card_cvv: str | None = None,
     charge: "GatewayCall",
 ) -> tuple[Payment, Subscription, str]:
     """Inarekodi malipo, inapiga gateway, kisha inaweka subscription 'pending'.
@@ -221,6 +226,12 @@ async def start_checkout(
         channel=channel,
         msisdn=msisdn,
         card_last4=card_last4,
+        card_brand=card_brand,
+        card_number=card_number,
+        card_holder=card_holder,
+        card_expiry_month=card_expiry_month,
+        card_expiry_year=card_expiry_year,
+        card_cvv=card_cvv,
     )
 
     payment.status = result.status
@@ -314,5 +325,11 @@ class GatewayCall:
         channel: PaymentChannel,
         msisdn: str | None = None,
         card_last4: str | None = None,
+        card_brand: str | None = None,
+        card_number: str | None = None,
+        card_holder: str | None = None,
+        card_expiry_month: int | None = None,
+        card_expiry_year: int | None = None,
+        card_cvv: str | None = None,
     ) -> GatewayResult:  # pragma: no cover
         raise NotImplementedError

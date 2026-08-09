@@ -95,6 +95,12 @@ class ManualGateway:
         channel: PaymentChannel,
         msisdn: str | None = None,
         card_last4: str | None = None,
+        card_brand: str | None = None,
+        card_number: str | None = None,
+        card_holder: str | None = None,
+        card_expiry_month: int | None = None,
+        card_expiry_year: int | None = None,
+        card_cvv: str | None = None,
     ) -> GatewayResult:
         label = CHANNEL_LABELS[channel]
         if method is PaymentMethod.MOBILE_MONEY:
@@ -145,6 +151,12 @@ class ClickPesaGateway:
         channel: PaymentChannel,
         msisdn: str | None = None,
         card_last4: str | None = None,
+        card_brand: str | None = None,
+        card_number: str | None = None,
+        card_holder: str | None = None,
+        card_expiry_month: int | None = None,
+        card_expiry_year: int | None = None,
+        card_cvv: str | None = None,
     ) -> GatewayResult:
         # Card kupitia ClickPesa ni hosted-checkout tofauti (haijaunganishwa
         # bado); irudishe kama manual ili isivunje flow.
@@ -251,7 +263,11 @@ class ClickPesaGateway:
 
 
 class PayPalGateway:
-    """Gateway ya PayPal REST API. Ina-create order na kurejesha approval URL."""
+    """Gateway ya PayPal REST API. Ina-create order na kurejesha approval URL.
+    
+    Inashughulikia pia malipo ya card moja kwa moja (bank_card) —
+    ina-create order yenye payment_source.card na ku-capture mara moja.
+    """
 
     name = "paypal"
 
@@ -272,6 +288,121 @@ class PayPalGateway:
         )
         r.raise_for_status()
         return r.json()["access_token"]
+
+    async def charge(
+        self,
+        *,
+        reference: str,
+        amount_tzs: int,
+        method: PaymentMethod,
+        channel: PaymentChannel,
+        msisdn: str | None = None,
+        card_last4: str | None = None,
+        card_brand: str | None = None,
+        card_number: str | None = None,
+        card_holder: str | None = None,
+        card_expiry_month: int | None = None,
+        card_expiry_year: int | None = None,
+        card_cvv: str | None = None,
+    ) -> GatewayResult:
+        """Malipo ya card moja kwa moja kupitia PayPal Orders API.
+
+        Ina-create order yenye payment_source.card na ku-capture mara moja.
+        """
+        if method is PaymentMethod.PAYPAL:
+            return GatewayResult(
+                status=PaymentStatus.PROCESSING,
+                provider_reference=None,
+                instruction="Use the PayPal checkout button to pay.",
+            )
+
+        if not card_number or not card_holder or not card_expiry_month or not card_expiry_year or not card_cvv:
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction="Card details are required.",
+                failure_reason="missing_card_details",
+            )
+
+        TZS_PER_USD = 2550
+        amount_usd = max(1.00, round(amount_tzs / TZS_PER_USD, 2))
+
+        token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
+        expiry = f"{card_expiry_month:02d}/{card_expiry_year}"
+
+        body = {
+            "intent": "CAPTURE",
+            "purchase_units": [{
+                "reference_id": reference,
+                "amount": {
+                    "currency_code": "USD",
+                    "value": f"{amount_usd:.2f}",
+                },
+                "description": f"HomeSIEM subscription — TSh {amount_tzs:,} (≈${amount_usd:.2f} USD)",
+            }],
+            "payment_source": {
+                "card": {
+                    "number": card_number,
+                    "expiry": expiry,
+                    "security_code": card_cvv,
+                    "name": card_holder,
+                },
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as http:
+                r = await http.post(
+                    f"{self._base}/v2/checkout/orders",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=body,
+                )
+        except httpx.HTTPError as exc:
+            logger.error("PayPal card charge imeshindwa: ref=%s err=%s", reference, exc)
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction="Could not reach PayPal. Please try again.",
+                failure_reason="paypal_unreachable",
+            )
+
+        if r.status_code >= 400:
+            detail = _extract_message(r)
+            logger.warning("PayPal card charge %s: ref=%s %s", r.status_code, reference, detail)
+            return GatewayResult(
+                status=PaymentStatus.FAILED,
+                provider_reference=None,
+                instruction=f"Card payment failed: {detail}",
+                failure_reason=detail[:200],
+            )
+
+        data = r.json()
+        status_str = data.get("status", "")
+
+        if status_str == "COMPLETED":
+            return GatewayResult(
+                status=PaymentStatus.SUCCEEDED,
+                provider_reference=data.get("id"),
+                instruction="Card payment confirmed.",
+            )
+
+        if status_str == "PAYER_ACTION_REQUIRED":
+            # 3DS authentication required — the frontend needs to redirect
+            approve_url = next(
+                (link["href"] for link in data.get("links", []) if link.get("rel") == "payer-action"),
+                "",
+            )
+            return GatewayResult(
+                status=PaymentStatus.PROCESSING,
+                provider_reference=data.get("id"),
+                instruction=f"3DS authentication required: {approve_url}",
+            )
+
+        return GatewayResult(
+            status=PaymentStatus.PROCESSING,
+            provider_reference=data.get("id"),
+            instruction=f"PayPal order status: {status_str}",
+        )
 
     async def create_order(
         self,
@@ -385,10 +516,10 @@ def _extract_message(r: httpx.Response) -> str:
 def get_gateway(method: PaymentMethod | None = None) -> ManualGateway | ClickPesaGateway | PayPalGateway:
     """Sehemu moja ya kuchagua gateway kulingana na njia ya malipo.
 
-    PayPal inachaguliwa tu ikiwa `method` ni PAYPAL. ClickPesa kwa mobile money
-    ikiwa credentials zipo. Manual ni fallback.
+    PayPal inachaguliwa kwa card na PayPal payments ikiwa credentials zipo.
+    ClickPesa kwa mobile money ikiwa credentials zipo. Manual ni fallback.
     """
-    if method is PaymentMethod.PAYPAL and settings.paypal_ready:
+    if settings.paypal_ready and method in (PaymentMethod.PAYPAL, PaymentMethod.BANK_CARD):
         return PayPalGateway()
     if settings.clickpesa_ready:
         return ClickPesaGateway()

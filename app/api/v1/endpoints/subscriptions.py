@@ -109,12 +109,6 @@ async def checkout(
     if payload.plan is Plan.FREE:
         raise AppError("The Free plan does not need a payment.", code="plan_not_payable")
 
-    if payload.method is PaymentMethod.PAYPAL:
-        raise AppError(
-            "Use /subscriptions/paypal/create-order for PayPal payments.",
-            code="use_paypal_endpoint",
-        )
-
     try:
         subscription = await sub_crud.ensure_subscription(db, user.organization_id)
 
@@ -143,6 +137,11 @@ async def checkout(
             # Namba kamili ya card haiendi mbali zaidi ya hapa.
             card_last4=card.number[-4:] if card else None,
             card_brand=card_brand_of(card.number) if card else None,
+            card_number=card.number if card else None,
+            card_holder=card.holder if card else None,
+            card_expiry_month=card.expiry_month if card else None,
+            card_expiry_year=card.expiry_year if card else None,
+            card_cvv=card.cvv if card else None,
             charge=get_gateway(payload.method).charge,
         )
     except SQLAlchemyError as exc:
