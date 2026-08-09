@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import CurrentUser, DbSession, RequireOwner
@@ -10,6 +9,7 @@ from app.core.payments import ClickPesaGateway, PayPalGateway, get_gateway
 from app.core.plans import CURRENCY, PLAN_ORDER, price_of, spec_for
 from app.crud import subscription as sub_crud
 from app.models.enums import PaymentChannel, PaymentMethod, PaymentStatus, Plan
+from app.schemas.common import CamelModel
 from app.schemas.subscription import (
     CheckoutRequest,
     CheckoutResponse,
@@ -244,20 +244,20 @@ async def clickpesa_webhook(secret: str, payload: dict, db: DbSession) -> dict:
 
 # --- PayPal ----------------------------------------------------------------
 
-class PayPalOrderRequest(BaseModel):
+class PayPalOrderRequest(CamelModel):
     plan: Plan
     return_url: str
     cancel_url: str
 
 
-class PayPalOrderResponse(BaseModel):
+class PayPalOrderResponse(CamelModel):
     order_id: str
     approve_url: str
     payment_reference: str
     subscription: SubscriptionRead
 
 
-class PayPalCaptureRequest(BaseModel):
+class PayPalCaptureRequest(CamelModel):
     order_id: str
 
 
