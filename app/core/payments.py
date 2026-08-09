@@ -281,7 +281,16 @@ class PayPalGateway:
         return_url: str,
         cancel_url: str,
     ) -> dict:
-        """Create PayPal order na kurudisha {id, approve_url}."""
+        """Create PayPal order na kurudisha {id, approve_url}.
+
+        PayPal haitumii TZS — tunaconvert kwenda USD kwa kiwango cha soko
+        (TSh 2,550 = $1 USD takriban).
+        """
+        TZS_PER_USD = 2550
+        amount_usd = round(amount_tzs / TZS_PER_USD, 2)
+        if amount_usd < 1:
+            amount_usd = 1.00
+
         token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
         r = await httpx.AsyncClient(timeout=_TIMEOUT).post(
             f"{self._base}/v2/checkout/orders",
@@ -291,10 +300,10 @@ class PayPalGateway:
                 "purchase_units": [{
                     "reference_id": reference,
                     "amount": {
-                        "currency_code": "TZS",
-                        "value": str(amount_tzs),
+                        "currency_code": "USD",
+                        "value": f"{amount_usd:.2f}",
                     },
-                    "description": f"HomeSIEM subscription — TSh {amount_tzs:,}",
+                    "description": f"HomeSIEM subscription — TSh {amount_tzs:,} (≈${amount_usd:.2f} USD)",
                 }],
                 "application_context": {
                     "brand_name": "HomeSIEM",
