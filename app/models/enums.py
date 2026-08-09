@@ -42,6 +42,7 @@ class PaymentMethod(str, Enum):
     MOBILE_MONEY = "mobile_money"
     BANK_CARD = "bank_card"
     PESAPAL = "pesapal"
+    PAYPAL = "paypal"  # deprecated — kept for old records
 
 
 class PaymentChannel(str, Enum):
@@ -53,6 +54,7 @@ class PaymentChannel(str, Enum):
     AIRTEL_MONEY = "airtel_money"
     CARD = "card"
     PESAPAL = "pesapal"
+    PAYPAL = "paypal"  # deprecated — kept for old records
 
 
 class PaymentStatus(str, Enum):
