@@ -328,7 +328,7 @@ class PayPalGateway:
         amount_usd = max(1.00, round(amount_tzs / TZS_PER_USD, 2))
 
         token = await self._token(httpx.AsyncClient(timeout=_TIMEOUT))
-        expiry = f"{card_expiry_month:02d}/{card_expiry_year}"
+        expiry = f"{card_expiry_month:02d}/{card_expiry_year:04d}"
 
         body = {
             "intent": "CAPTURE",
@@ -368,7 +368,7 @@ class PayPalGateway:
 
         if r.status_code >= 400:
             detail = _extract_message(r)
-            logger.warning("PayPal card charge %s: ref=%s %s", r.status_code, reference, detail)
+            logger.warning("PayPal card charge %s: ref=%s status=%s body=%s", r.status_code, reference, detail, r.text[:500])
             return GatewayResult(
                 status=PaymentStatus.FAILED,
                 provider_reference=None,
