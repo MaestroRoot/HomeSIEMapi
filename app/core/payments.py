@@ -382,9 +382,13 @@ def _extract_message(r: httpx.Response) -> str:
         return r.text[:200] or f"HTTP {r.status_code}"
 
 
-def get_gateway() -> ManualGateway | ClickPesaGateway | PayPalGateway:
-    """Sehemu moja ya kuchagua gateway. PayPal au ClickPesa ikiwa credentials zipo."""
-    if settings.paypal_ready:
+def get_gateway(method: PaymentMethod | None = None) -> ManualGateway | ClickPesaGateway | PayPalGateway:
+    """Sehemu moja ya kuchagua gateway kulingana na njia ya malipo.
+
+    PayPal inachaguliwa tu ikiwa `method` ni PAYPAL. ClickPesa kwa mobile money
+    ikiwa credentials zipo. Manual ni fallback.
+    """
+    if method is PaymentMethod.PAYPAL and settings.paypal_ready:
         return PayPalGateway()
     if settings.clickpesa_ready:
         return ClickPesaGateway()

@@ -143,7 +143,7 @@ async def checkout(
             # Namba kamili ya card haiendi mbali zaidi ya hapa.
             card_last4=card.number[-4:] if card else None,
             card_brand=card_brand_of(card.number) if card else None,
-            charge=get_gateway().charge,
+            charge=get_gateway(payload.method).charge,
         )
     except SQLAlchemyError as exc:
         logger.error("Checkout imeshindwa: %s", exc)
@@ -312,7 +312,7 @@ async def create_paypal_order(
         ) from exc
 
     # Create PayPal order
-    gateway = get_gateway()
+    gateway = get_gateway(PaymentMethod.PAYPAL)
     if not isinstance(gateway, PayPalGateway):
         raise ServiceUnavailableError("PayPal gateway not available.", code="paypal_not_configured")
 
@@ -365,7 +365,7 @@ async def capture_paypal_order(
     if payment.status is PaymentStatus.SUCCEEDED:
         raise AppError("This payment was already captured.", code="payment_already_captured")
 
-    gateway = get_gateway()
+    gateway = get_gateway(PaymentMethod.PAYPAL)
     if not isinstance(gateway, PayPalGateway):
         raise ServiceUnavailableError("PayPal gateway not available.", code="paypal_not_configured")
 
