@@ -346,7 +346,7 @@ class PesaPalGateway:
         PesaPal inashughulikia card payments moja kwa moja (Visa, Mastercard, AMEX).
         Mteja anaenda kwenye redirect URL, ana-chagua card, na anaingiza details.
         """
-        if method is not PaymentMethod.BANK_CARD:
+        if method not in (PaymentMethod.BANK_CARD, PaymentMethod.PESAPAL):
             return GatewayResult(
                 status=PaymentStatus.FAILED,
                 provider_reference=None,
@@ -698,13 +698,13 @@ def get_gateway(method: PaymentMethod | None = None) -> ManualGateway | ClickPes
     """Sehemu moja ya kuchagua gateway kulingana na njia ya malipo.
 
     PayPal inachaguliwa kwa PAYPAL pekee.
-    PesaPal inachaguliwa kwa BANK_CARD (card payments).
+    PesaPal inachaguliwa kwa BANK_CARD na PESAPAL (card payments).
     ClickPesa kwa mobile money.
     Manual ni fallback.
     """
     if method is PaymentMethod.PAYPAL and settings.paypal_ready:
         return PayPalGateway()
-    if method is PaymentMethod.BANK_CARD and settings.pesapal_ready:
+    if method in (PaymentMethod.BANK_CARD, PaymentMethod.PESAPAL) and settings.pesapal_ready:
         return PesaPalGateway()
     if settings.clickpesa_ready:
         return ClickPesaGateway()

@@ -42,6 +42,7 @@ class PaymentMethod(str, Enum):
     MOBILE_MONEY = "mobile_money"
     BANK_CARD = "bank_card"
     PAYPAL = "paypal"
+    PESAPAL = "pesapal"
 
 
 class PaymentChannel(str, Enum):
@@ -89,4 +90,5 @@ CHANNELS_BY_METHOD: dict[PaymentMethod, tuple[PaymentChannel, ...]] = {
     ),
     PaymentMethod.BANK_CARD: (PaymentChannel.CARD, PaymentChannel.PESAPAL),
     PaymentMethod.PAYPAL: (PaymentChannel.PAYPAL,),
+    PaymentMethod.PESAPAL: (PaymentChannel.PESAPAL,),
 }
