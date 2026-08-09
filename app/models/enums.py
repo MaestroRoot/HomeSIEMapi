@@ -41,7 +41,6 @@ class SubscriptionStatus(str, Enum):
 class PaymentMethod(str, Enum):
     MOBILE_MONEY = "mobile_money"
     BANK_CARD = "bank_card"
-    PAYPAL = "paypal"
     PESAPAL = "pesapal"
 
 
@@ -53,7 +52,6 @@ class PaymentChannel(str, Enum):
     HALOPESA = "halopesa"
     AIRTEL_MONEY = "airtel_money"
     CARD = "card"
-    PAYPAL = "paypal"
     PESAPAL = "pesapal"
 
 
@@ -89,6 +87,5 @@ CHANNELS_BY_METHOD: dict[PaymentMethod, tuple[PaymentChannel, ...]] = {
         PaymentChannel.AIRTEL_MONEY,
     ),
     PaymentMethod.BANK_CARD: (PaymentChannel.CARD, PaymentChannel.PESAPAL),
-    PaymentMethod.PAYPAL: (PaymentChannel.PAYPAL,),
     PaymentMethod.PESAPAL: (PaymentChannel.PESAPAL,),
 }

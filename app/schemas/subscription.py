@@ -183,7 +183,7 @@ class CheckoutRequest(CamelModel):
     msisdn: str | None = None
     #: Card pekee.
     card: CardDetails | None = None
-    #: PesaPal/PayPal redirect URLs.
+    #: PesaPal redirect URLs.
     return_url: str | None = None
     cancel_url: str | None = None
 
@@ -204,8 +204,8 @@ class CheckoutRequest(CamelModel):
             if not self.msisdn:
                 raise ValueError("A phone number is required for mobile money.")
             self.card = None
-        elif self.method is PaymentMethod.PAYPAL:
-            # PayPal haitaji card na msisdn
+        elif self.method in (PaymentMethod.PESAPAL,):
+            # PesaPal haitaji card na msisdn - wanashughulikia kwenye checkout yao
             self.msisdn = None
             self.card = None
         else:
@@ -220,5 +220,5 @@ class CheckoutResponse(CamelModel):
     subscription: SubscriptionRead
     #: Maelezo ya kumwambia mteja afanye nini sasa (mfano kuthibitisha USSD).
     instruction: str
-    #: URL ya 3DS authentication (PayPal card) — frontend inaredirect hapa.
+    #: URL ya redirect (PesaPal) — frontend inaredirect hapa.
     redirect_url: str | None = None

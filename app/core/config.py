@@ -92,12 +92,6 @@ class Settings(BaseSettings):
     #: Siri inayowekwa mwishoni mwa webhook URL kama ulinzi wa ziada.
     clickpesa_webhook_secret: str | None = None
 
-    # --- Payments (PayPal) ----------------------------------------------
-    paypal_client_id: str | None = None
-    paypal_client_secret: str | None = None
-    paypal_mode: Literal["sandbox", "live"] = "sandbox"
-    paypal_webhook_id: str | None = None
-
     # --- Payments (PesaPal) ----------------------------------------------
     #: PesaPal API 3.0 credentials. Consumer key/secret hutoka kwenye
     #: merchant dashboard: https://www.pesapal.com/dashboard
@@ -124,10 +118,6 @@ class Settings(BaseSettings):
     @property
     def clickpesa_ready(self) -> bool:
         return bool(self.clickpesa_client_id and self.clickpesa_api_key)
-
-    @property
-    def paypal_ready(self) -> bool:
-        return bool(self.paypal_client_id and self.paypal_client_secret)
 
     @property
     def pesapal_ready(self) -> bool:
