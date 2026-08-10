@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     agent,
     ai,
+    alerts,
+    actions,
     auth,
     capture,
     contact,
@@ -19,6 +21,7 @@ from app.api.v1.endpoints import (
     notifications,
     org,
     reports,
+    sources,
     stats,
     subscriptions,
     telemetry,
@@ -50,3 +53,6 @@ api_router.include_router(nextdns.router)
 api_router.include_router(ueva.router)
 api_router.include_router(dashboards.router)
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])
+api_router.include_router(sources.router)
+api_router.include_router(alerts.router)
+api_router.include_router(actions.router)

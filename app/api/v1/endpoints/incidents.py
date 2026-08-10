@@ -1,4 +1,4 @@
-"""Incidents: unda, orodha, sasisha (status/assignee/notes)."""
+"""Incidents: unda, orodha, sasisha (status/assignee/notes/alerts)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,9 @@ async def list_incidents(user: CurrentUser, db: DbSession) -> list[IncidentRead]
 
 
 @router.post("", response_model=IncidentRead, summary="Open an incident")
-async def create_incident(payload: IncidentCreate, user: RequireAnalyst, db: DbSession) -> IncidentRead:
+async def create_incident(
+    payload: IncidentCreate, user: RequireAnalyst, db: DbSession
+) -> IncidentRead:
     inc = await crud.create_incident(
         db,
         user.organization_id,
@@ -29,6 +31,7 @@ async def create_incident(payload: IncidentCreate, user: RequireAnalyst, db: DbS
         severity=payload.severity,
         summary=payload.summary,
         assignee=payload.assignee,
+        alert_ids=payload.alert_ids,
     )
     return IncidentRead.model_validate(inc)
 
@@ -40,6 +43,15 @@ async def update_incident(
     inc = await crud.get_incident(db, user.organization_id, incident_id)
     if inc is None:
         raise NotFoundError("No such incident.", code="incident_not_found")
+    if payload.alert is not None:
+        if payload.alert.action == "link":
+            await crud.link_alert_to_incident(
+                db, inc, uuid.UUID(payload.alert.alert_id)
+            )
+        else:
+            await crud.unlink_alert_from_incident(
+                db, inc, uuid.UUID(payload.alert.alert_id)
+            )
     inc = await crud.update_incident(
         db,
         inc,

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 
@@ -40,6 +40,8 @@ class _DnsEvent:
     dst_ip: str | None = None
     dst_port: int | None = None
     protocol: str | None = None
+    event_type: str = "dns"
+    source: str = "nextdns"
 
 
 def _parse(iso: str | None) -> datetime | None:

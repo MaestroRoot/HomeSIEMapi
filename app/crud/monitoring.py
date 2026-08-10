@@ -8,7 +8,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitoring import Device, SecurityEvent, SensorToken
@@ -292,6 +292,134 @@ async def search(
     )
     devices = list((await db.execute(dev_stmt)).scalars())
     return events, devices
+
+
+_FIELD_COLUMNS: dict[str, object] = {
+    "domain": SecurityEvent.domain,
+    "ip": SecurityEvent.dst_ip,
+    "src_ip": SecurityEvent.src_ip,
+    "dst_ip": SecurityEvent.dst_ip,
+    "dst_port": SecurityEvent.dst_port,
+    "protocol": SecurityEvent.protocol,
+    "kind": SecurityEvent.kind,
+    "event_type": SecurityEvent.event_type,
+    "verdict": SecurityEvent.verdict,
+    "severity": SecurityEvent.severity,
+    "country": SecurityEvent.country,
+    "asn": SecurityEvent.asn,
+    "device": Device.name,
+    "account": SecurityEvent.account,
+    "process_name": SecurityEvent.process_name,
+    "file_path": SecurityEvent.file_path,
+    "source": SecurityEvent.source,
+}
+
+
+async def siem_search(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    parsed,
+    *,
+    limit: int = 60,
+) -> tuple[list[tuple[SecurityEvent, str | None]], list[Device], dict, float]:
+    """Tafuta kwa kutumia query language (angalia `app/core/querylang.py`).
+
+    Inarudisha (events, devices, breakdown, took_ms)."""
+    import time
+
+    from sqlalchemy import and_, not_, or_
+
+    start = time.perf_counter()
+    where: list = [SecurityEvent.organization_id == organization_id]
+    dev_where: list = [Device.organization_id == organization_id]
+
+    # --- vigezo vya fields ---
+    for key, values in parsed.fields.items():
+        col = _FIELD_COLUMNS.get(key)
+        if col is None:
+            continue
+        for value, negated in values:
+            clause = _value_clause(col, value)
+            if clause is not None:
+                where.append(not_(clause) if negated else clause)
+
+    # --- wakati ---
+    if parsed.after is not None:
+        since_ts = datetime.fromtimestamp(parsed.after, tz=timezone.utc)
+        where.append(SecurityEvent.occurred_at >= since_ts)
+    if parsed.before is not None:
+        until_ts = datetime.fromtimestamp(parsed.before, tz=timezone.utc)
+        where.append(SecurityEvent.occurred_at <= until_ts)
+
+    # --- has: key za raw JSONB ---
+    for key in parsed.has:
+        where.append(func.jsonb_exists(SecurityEvent.raw, key))
+
+    # --- maneno huru: angani events + devices ---
+    free_clauses: list = []
+    for token in parsed.free:
+        like = f"%{token}%"
+        ev_clause = (
+            SecurityEvent.domain.ilike(like)
+            | SecurityEvent.dst_ip.ilike(like)
+            | SecurityEvent.src_ip.ilike(like)
+            | SecurityEvent.account.ilike(like)
+            | SecurityEvent.process_name.ilike(like)
+            | SecurityEvent.file_path.ilike(like)
+            | SecurityEvent.source.ilike(like)
+            | Device.name.ilike(like)
+        )
+        free_clauses.append(ev_clause)
+        dev_where.append(
+            or_(
+                Device.name.ilike(like),
+                Device.mac.ilike(like),
+                Device.last_ip.ilike(like),
+                Device.hostname.ilike(like),
+            )
+        )
+    if free_clauses:
+        where.append(and_(*free_clauses))
+
+    # Breakdown ya severity kwa matokeo (kwa chart ya matokeo).
+    breakdown = dict(
+        (
+            await db.execute(
+                select(SecurityEvent.severity, func.count(SecurityEvent.id))
+                .where(*where)
+                .group_by(SecurityEvent.severity)
+            )
+        ).all()
+    )
+
+    stmt = (
+        select(SecurityEvent, Device.name)
+        .outerjoin(Device, SecurityEvent.device_id == Device.id)
+        .where(*where)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(limit)
+    )
+    events = [(ev, name) for ev, name in (await db.execute(stmt)).all()]
+
+    if parsed.is_empty:
+        dev_where = [Device.organization_id == organization_id]
+    dev_stmt = select(Device).where(and_(*dev_where)).limit(20)
+    devices = list((await db.execute(dev_stmt)).scalars())
+
+    took = (time.perf_counter() - start) * 1000.0
+    return events, devices, breakdown, took
+
+
+def _value_clause(col, value: str):
+    """Andika clause ya filter kwa col/col integer, kulingana na aina ya thamani."""
+    if isinstance(col.type, Integer):
+        try:
+            return col == int(value)
+        except ValueError:
+            return None
+    if value == "*":
+        return col.isnot(None)
+    return col.ilike(f"%{value}%")
 
 
 # --- Sensor tokens --------------------------------------------------------

@@ -156,12 +156,24 @@ class SecurityEvent(UUIDMixin, TimestampMixin, Base):
 
     #: "dns" au "flow".
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Aina ya tukio baada ya kusanifishwa: dns | network | authentication |
+    #: process | file | email | other. "flow" -> network, "dns" -> dns.
+    event_type: Mapped[str | None] = mapped_column(String(24), index=True, nullable=True)
     src_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     src_mac: Mapped[str | None] = mapped_column(String(17), nullable=True)
     domain: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     dst_ip: Mapped[str | None] = mapped_column(String(45), index=True, nullable=True)
     dst_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     protocol: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    #: --- Sifa zilizosanifishwa (kutoka sensor zenye logs za kina) --------
+    account: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    process_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    command_line: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    parent_process: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: Chanzo kilichotuma tukio (jina la agent/sensor, "nextdns", "pcap"...).
+    source: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
 
     verdict: Mapped[str] = mapped_column(String(16), default="unknown", index=True, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), default="info", index=True, nullable=False)
@@ -174,6 +186,8 @@ class SecurityEvent(UUIDMixin, TimestampMixin, Base):
     occurred_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True, nullable=True
     )
+    #: Payload ghafi kama ilivyotumwa na sensor (kabla ya enrichment).
+    raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<SecurityEvent {self.kind} {self.domain or self.dst_ip} {self.verdict}>"
@@ -356,7 +370,13 @@ class DiscoverySchedule(UUIDMixin, TimestampMixin, Base):
 
 class DetectionRule(UUIDMixin, TimestampMixin, Base):
     """Kanuni ya kugundua: IF <condition> THEN alert. Inatathminiwa wakati wa
-    ingest juu ya kila event."""
+    ingest juu ya kila event.
+
+    Inaweza kuwa ya *correlation*: badala ya kutathmini tukio moja, `window_seconds`
+    + `threshold` + `group_by` zinahesabu matukio yanayolingana ndani ya dirisha
+    la wakati, yakipangwa kwa kikundi (`group_by`), na kuanzisha alert tu idadi
+    inapofikia `threshold`.
+    """
 
     __tablename__ = "detection_rules"
 
@@ -367,6 +387,7 @@ class DetectionRule(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     #: verdict_is | domain_contains | country_is | pulse_count_gte
     condition_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -374,6 +395,18 @@ class DetectionRule(UUIDMixin, TimestampMixin, Base):
     severity: Mapped[str] = mapped_column(String(16), default="medium", nullable=False)
     action: Mapped[str] = mapped_column(String(16), default="alert", nullable=False)
     source: Mapped[str] = mapped_column(String(16), default="custom", nullable=False)
+
+    #: --- MITRE ATT&CK ------------------------------------------------
+    mitre_tactic: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mitre_technique: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    #: --- Correlation --------------------------------------------------
+    #: 0 = tukio moja linatosha. >0 = dirisha la wakati (sekunde) la kuhesabia.
+    window_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Kikundi cha kuhesabia matukio, mfano "dst_ip" — tupu = hesabu yote.
+    group_by: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    #: Matukio mangapi (ndani ya window) yanahitajika kuleta alert.
+    threshold: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     hits: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     false_positives: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
@@ -406,7 +439,12 @@ class ReportSchedule(UUIDMixin, TimestampMixin, Base):
 
 
 class Incident(UUIDMixin, TimestampMixin, Base):
-    """Kisa cha usalama kinachosimamiwa na mtu (triage -> closed)."""
+    """Kisa cha usalama kinachosimamiwa na mtu (triage -> closed).
+
+    Kisa (case workspace) kinabeba: summary, notes (maandiko), timeline
+    (rekodi ya matukio ya uchunguzi), entities (devices/IPs/domains/accounts
+    zinazohusika) na alert_ids (alerts zilizounganishwa).
+    """
 
     __tablename__ = "incidents"
 
@@ -423,6 +461,12 @@ class Incident(UUIDMixin, TimestampMixin, Base):
     summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
     #: [{author, time, body}]
     notes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: [{time, type, message, actor}] — historia ya uchunguzi.
+    timeline: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: [{type, value, label, count}] — entities za uchunguzi (graph nodes).
+    entities: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: Alert ids zilizounganishwa na kisa hiki.
+    alert_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Incident {self.title} ({self.status})>"

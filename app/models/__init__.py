@@ -31,6 +31,7 @@ from app.models.monitoring import (
 from app.models.organization import Organization
 from app.models.payment import Payment
 from app.models.security import Invitation, PasswordResetCode
+from app.models.siem import Alert, DataSource, ResponseAction
 from app.models.subscription import Subscription
 from app.models.user import User
 from app.models.ueva import UserAnomaly, UserBaseline, UserRiskScore
@@ -39,9 +40,11 @@ __all__ = [
     "Base",
     "Agent",
     "AgentJob",
+    "Alert",
     "CHANNELS_BY_METHOD",
     "Dashboard",
     "DashboardWidget",
+    "DataSource",
     "DetectionRule",
     "Device",
     "ForensicSnapshot",
@@ -49,6 +52,7 @@ __all__ = [
     "LogEntry",
     "NotificationChannel",
     "ReportSchedule",
+    "ResponseAction",
     "Vulnerability",
     "Invitation",
     "InvitationStatus",

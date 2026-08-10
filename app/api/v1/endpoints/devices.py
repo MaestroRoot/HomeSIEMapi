@@ -29,6 +29,8 @@ class SearchResults(CamelModel):
     query: str
     events: list[SecurityEventRead]
     devices: list[DeviceRead]
+    breakdown: dict[str, int] = {}
+    took_ms: float = 0.0
 
 logger = get_logger(__name__)
 
@@ -112,13 +114,20 @@ async def list_events(
     return EventList(items=items, total=total)
 
 
-@router.get("/search", response_model=SearchResults, summary="Search events and devices")
+@router.get(
+    "/search",
+    response_model=SearchResults,
+    summary="Search events and devices (query language)",
+)
 async def search(
     user: CurrentUser,
     db: DbSession,
     q: Annotated[str, Query(min_length=1, max_length=200)],
 ) -> SearchResults:
-    events, devices = await crud.search(db, user.organization_id, q)
+    from app.core.querylang import parse
+
+    parsed = parse(q)
+    events, devices, breakdown, took = await crud.siem_search(db, user.organization_id, parsed)
     items = []
     for event, device_name in events:
         read = SecurityEventRead.model_validate(event)
@@ -128,6 +137,8 @@ async def search(
         query=q,
         events=items,
         devices=[DeviceRead.model_validate(d) for d in devices],
+        breakdown={k: int(v) for k, v in breakdown.items()},
+        took_ms=round(took, 2),
     )
 
 

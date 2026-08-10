@@ -1,4 +1,4 @@
-"""Schemas za incidents."""
+"""Schemas za incidents (case workspace)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,20 @@ class IncidentNote(CamelModel):
     body: str
 
 
+class IncidentTimelineEvent(CamelModel):
+    time: str
+    type: str = "note"
+    message: str
+    actor: str = "system"
+
+
+class IncidentEntity(CamelModel):
+    type: str  # device | ip | domain | account | file | process | hash
+    value: str
+    label: str | None = None
+    count: int = 1
+
+
 class IncidentRead(CamelModel):
     id: uuid.UUID
     title: str
@@ -28,6 +42,9 @@ class IncidentRead(CamelModel):
     assignee: str | None = None
     summary: str
     notes: list[IncidentNote] = []
+    timeline: list[IncidentTimelineEvent] = []
+    entities: list[IncidentEntity] = []
+    alert_ids: list[str] = []
     created_at: datetime
     updated_at: datetime
 
@@ -41,6 +58,8 @@ class IncidentCreate(CamelModel):
     severity: Severity = "medium"
     summary: str = Field(default="", max_length=4000)
     assignee: str | None = Field(default=None, max_length=120)
+    #: Unganisha alerts zilizopo mara moja.
+    alert_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
 class IncidentUpdate(CamelModel):
@@ -50,3 +69,10 @@ class IncidentUpdate(CamelModel):
     summary: str | None = Field(default=None, max_length=4000)
     #: Ongeza note mpya (body pekee, author/time zinawekwa na server).
     note: str | None = Field(default=None, max_length=2000)
+    #: Ongeza/ondoa alert kwenye kisa. {alert_id, action: link|unlink}.
+    alert: "AlertLink | None" = None
+
+
+class AlertLink(CamelModel):
+    alert_id: str
+    action: Literal["link", "unlink"] = "link"

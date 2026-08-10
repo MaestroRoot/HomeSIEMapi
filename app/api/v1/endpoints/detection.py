@@ -1,4 +1,4 @@
-"""Detection rules: orodha, unda, badilisha, futa."""
+"""Detection rules: orodha, unda, badilisha, futa, library seeding."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DbSession, RequireAnalyst
+from app.core.detection_library import seed_library_committed
 from app.core.errors import NotFoundError
 from app.crud import detection as crud
 from app.schemas.common import Message
@@ -31,6 +32,12 @@ async def create_rule(payload: RuleCreate, user: RequireAnalyst, db: DbSession) 
         value=payload.value,
         severity=payload.severity,
         action=payload.action,
+        description=payload.description or "",
+        mitre_tactic=payload.mitre_tactic,
+        mitre_technique=payload.mitre_technique,
+        window_seconds=payload.window_seconds,
+        group_by=payload.group_by,
+        threshold=payload.threshold,
     )
     return RuleRead.model_validate(rule)
 
@@ -46,15 +53,34 @@ async def update_rule(
         db,
         rule,
         name=payload.name,
+        description=payload.description,
         enabled=payload.enabled,
         value=payload.value,
         severity=payload.severity,
         action=payload.action,
+        mitre_tactic=payload.mitre_tactic,
+        mitre_technique=payload.mitre_technique,
+        window_seconds=payload.window_seconds,
+        group_by=payload.group_by,
+        threshold=payload.threshold,
     )
     return RuleRead.model_validate(rule)
 
 
-@router.post("/{rule_id}/false-positive", response_model=RuleRead, summary="Mark a rule hit as a false positive")
+@router.post("/library/seed", response_model=Message, summary="Install the built-in rule library")
+async def seed_library(user: RequireAnalyst, db: DbSession) -> Message:
+    added = await seed_library_committed(db, user.organization_id)
+    return Message(
+        detail=f"{added} library rule(s) added.",
+        code="library_seeded",
+    )
+
+
+@router.post(
+    "/{rule_id}/false-positive",
+    response_model=RuleRead,
+    summary="Mark a rule hit as a false positive",
+)
 async def mark_false_positive(rule_id: uuid.UUID, user: RequireAnalyst, db: DbSession) -> RuleRead:
     rule = await crud.get_rule(db, user.organization_id, rule_id)
     if rule is None:

@@ -69,12 +69,19 @@ class SecurityEventRead(CamelModel):
     device_id: uuid.UUID | None = None
     device_name: str | None = None
     kind: EventKind
+    event_type: str | None = None
     src_ip: str | None = None
     src_mac: str | None = None
     domain: str | None = None
     dst_ip: str | None = None
     dst_port: int | None = None
     protocol: str | None = None
+    account: str | None = None
+    process_name: str | None = None
+    command_line: str | None = None
+    file_path: str | None = None
+    parent_process: str | None = None
+    source: str | None = None
     verdict: Verdict
     severity: Severity
     pulse_count: int
@@ -98,17 +105,32 @@ class EventList(CamelModel):
 
 
 class IngestEvent(CamelModel):
-    """Tukio ghafi kutoka sensor, kabla ya enrichment."""
+    """Tukio ghafi kutoka sensor, kabla ya enrichment.
+
+    `kind` (dns|flow) linabakia kwa ushirikiano na sensors za zamani; `event_type`
+    linaruhusu sensors za kisasa kusema aina hasi (authentication, process, file...).
+    `extra` ni map ya ziada ambayo itahifadhiwa kwenye `raw` na kusanifishwa.
+    """
 
     kind: EventKind
+    event_type: str | None = Field(default=None, max_length=24)
     src_ip: str | None = Field(default=None, max_length=45)
     src_mac: str | None = Field(default=None, max_length=17)
     domain: str | None = Field(default=None, max_length=255)
     dst_ip: str | None = Field(default=None, max_length=45)
     dst_port: int | None = Field(default=None, ge=0, le=65535)
     protocol: str | None = Field(default=None, max_length=16)
+    account: str | None = Field(default=None, max_length=120)
+    process_name: str | None = Field(default=None, max_length=200)
+    command_line: str | None = Field(default=None, max_length=4000)
+    file_path: str | None = Field(default=None, max_length=500)
+    parent_process: str | None = Field(default=None, max_length=200)
+    #: Jina la chanzo kilichotuma (agent hostname, "nextdns", "pcap"...).
+    source: str | None = Field(default=None, max_length=120)
     #: Unix epoch seconds ya tukio, kama sensor inayo.
     ts: float | None = None
+    #: Vipengele vingine vyovyote vinavyotumwa na sensor (vitawekwa `raw`).
+    extra: dict | None = None
 
 
 class IngestBatch(CamelModel):
