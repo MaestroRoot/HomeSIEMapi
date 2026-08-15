@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision: str = '9c7e21a4d5b3'
-down_revision: str | None = 'f2963d39996f'
+down_revision: str | None = 'ab12cd34ef56'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
