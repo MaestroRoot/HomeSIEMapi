@@ -2,6 +2,9 @@ from enum import Enum
 
 
 class Role(str, Enum):
+    #: Akaunti ya usimamizi wa jukwaa zima (sio ya org). Inaruhusiwa kuona
+    #: users na subscriptions za org zote, na kubadilisha plan/role/status.
+    ADMIN = "admin"
     OWNER = "owner"
     ANALYST = "analyst"
     VIEWER = "viewer"
@@ -55,6 +58,7 @@ ROLE_RANK: dict[Role, int] = {
     Role.VIEWER: 0,
     Role.ANALYST: 1,
     Role.OWNER: 2,
+    Role.ADMIN: 3,
 }
 
 PLAN_RANK: dict[Plan, int] = {

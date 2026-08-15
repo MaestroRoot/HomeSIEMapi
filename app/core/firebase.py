@@ -310,6 +310,23 @@ def user_exists(email: str) -> bool | None:
         return None
 
 
+def revoke_refresh_tokens(firebase_uid: str) -> None:
+    """Inafuta refresh tokens zote za mtumiaji (logout ya papo hapo).
+
+    Best-effort: haipigi kelele kama service account haipo wala kama Firebase
+    inakataa, si jambo la kuangusha request kwa ajili yake.
+    """
+    if not _admin_available:
+        return
+
+    from firebase_admin import auth as fb_auth
+
+    try:
+        fb_auth.revoke_refresh_tokens(firebase_uid)
+    except Exception:  # noqa: BLE001, revocation isishindwe request
+        logger.exception("Kufuta refresh tokens kumeshindwa kwa %s", firebase_uid)
+
+
 def set_password(email: str, new_password: str) -> None:
     """Inabadilisha nenosiri la Firebase.
 

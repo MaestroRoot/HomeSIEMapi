@@ -99,6 +99,18 @@ class Settings(BaseSettings):
     # --- Dev bypass -----------------------------------------------------
     auth_dev_bypass: bool = False
 
+    # --- Platform admin --------------------------------------------------
+    #: Akaunti ya pekee yenye role ya ADMIN. Anapoingia, backend inaweka
+    #: role=ADMIN peke yake (kila login) na anaweza kusimamia users/subscriptions
+    #: za org zote kwenye /admin.
+    admin_email: str = "admin@gmail.com"
+    #: Nenosiri la kuanzia la admin. Inatumiwa na script ya seeding pekee
+    #: (`scripts/create_admin.py`), HAISOMWI kamwe wakati wa request.
+    admin_password: str = "babyboy@1922"
+    #: Akaunti zilizowekwa kwenye list hii hazipatikani kwenye /signup ya kawaida
+    #: (tumia scripts/create_admin.py au console ya Firebase kuzifanya).
+    reserved_emails: list[str] = ["admin@gmail.com"]
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
@@ -147,6 +159,10 @@ class Settings(BaseSettings):
     def dev_bypass_enabled(self) -> bool:
         """Bypass haiwezi kuwashwa production hata kama .env inasema hivyo."""
         return self.auth_dev_bypass and not self.is_production
+
+    @property
+    def admin_email_lower(self) -> str:
+        return self.admin_email.strip().lower()
 
     @property
     def database_url(self) -> str:

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.firebase import FirebaseIdentity
 from app.core.logging import get_logger
 from app.core.plans import CURRENCY, DEFAULT_PLAN, TRIAL_DAYS, TRIAL_PLAN
@@ -83,6 +84,10 @@ async def provision_from_firebase(
         user.email_verified = identity.email_verified
         if identity.picture and not user.avatar_url:
             user.avatar_url = identity.picture
+        # Akaunti ya admin inaweza kuundwa upya kwenye Firebase bila role kubadilika
+        # kwenye DB, hivyo tunaiweka tena kila anapoingia.
+        if identity.email == settings.admin_email_lower:
+            user.role = Role.ADMIN
         user.last_login_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(user)
@@ -145,7 +150,9 @@ async def provision_from_firebase(
         email=identity.email,
         name=display,
         avatar_url=identity.picture,
-        role=Role.OWNER,
+        # Admin akaunti inaorg yake kama user mwingine yeyote, lakini role yake
+        # inampatia ruhusa ya jukwaa zima (angalia app/api/v1/endpoints/admin.py).
+        role=Role.ADMIN if identity.email == settings.admin_email_lower else Role.OWNER,
         plan=TRIAL_PLAN,
         email_verified=identity.email_verified,
         last_login_at=now,

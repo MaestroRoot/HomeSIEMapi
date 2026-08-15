@@ -66,6 +66,13 @@ async def update_user_role(
     if target is None or target.organization_id != actor.organization_id:
         raise NotFoundError("No such member in this workspace.")
 
+    # Ruhusa ya admin ya jukwaa zima inatolewa na /admin pekee, sio na org.
+    if payload.role is Role.ADMIN:
+        raise ForbiddenError(
+            "Administrator access is managed from the platform admin panel.",
+            code="admin_role_not_assignable",
+        )
+
     if target.id == actor.id and payload.role is not Role.OWNER:
         owners = await db.scalar(
             select(func.count(User.id)).where(

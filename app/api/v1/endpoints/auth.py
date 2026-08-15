@@ -6,7 +6,7 @@ from app.api.deps import CurrentIdentity, CurrentUser, DbSession
 from app.core.config import settings
 from app.core.email import send_mfa_otp, send_password_reset_otp, send_welcome_email
 from app.core.errors import AuthError, NotFoundError, ServiceUnavailableError
-from app.core.firebase import admin_available, set_password
+from app.core.firebase import admin_available, revoke_refresh_tokens, set_password
 from app.core.logging import get_logger
 from app.core.mfa import create_mfa_challenge, verify_mfa_otp
 from app.core.ratelimit import client_key, otp_limiter, session_limiter
@@ -89,12 +89,7 @@ async def logout(user: CurrentUser) -> Message:
     weka service account kisha ubadilishe `check_revoked=True`.
     """
     if admin_available() and not user.firebase_uid.startswith("dev_"):
-        from firebase_admin import auth as fb_auth
-
-        try:
-            fb_auth.revoke_refresh_tokens(user.firebase_uid)
-        except Exception:  # noqa: BLE001, logout isishindwe kwa sababu ya Firebase
-            logger.exception("Kufuta refresh tokens kumeshindwa kwa %s", user.email)
+        revoke_refresh_tokens(user.firebase_uid)
 
     return Message(detail="You have been signed out.", code="logged_out")
 

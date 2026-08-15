@@ -84,6 +84,23 @@ RequireAnalyst = Annotated[User, Depends(require_role(Role.ANALYST))]
 RequireOwner = Annotated[User, Depends(require_role(Role.OWNER))]
 
 
+async def require_admin(user: CurrentUser) -> User:
+    """Admin pekee (ulioumbwa kwa `ADMIN_EMAIL`), si owner wa org.
+
+    Hii ni ulinganisho wa moja kwa moja, SIO ngazi: owner hapaswi kupata
+    ruhusa ya admin kwa sababu tu ana kiwango cha juu kwenye org yake.
+    """
+    if user.role is not Role.ADMIN:
+        raise ForbiddenError(
+            "This action is reserved for the platform administrator.",
+            code="admin_only",
+        )
+    return user
+
+
+RequireAdmin = Annotated[User, Depends(require_admin)]
+
+
 async def get_sensor_org(
     db: DbSession,
     x_sensor_token: Annotated[str | None, Header()] = None,

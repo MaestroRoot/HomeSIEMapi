@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    actions,
+    admin,
     agent,
     ai,
     alerts,
-    actions,
     auth,
     capture,
     contact,
@@ -32,6 +33,7 @@ from app.api.v1.endpoints import ueva
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(admin.router)
 api_router.include_router(users.router)
 api_router.include_router(invitations.router)
 api_router.include_router(subscriptions.router)
