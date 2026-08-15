@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, field_serializer
+from pydantic import EmailStr, Field, field_serializer, field_validator
 
 from app.schemas.common import CamelModel
 
@@ -15,6 +15,26 @@ JobStatus = Literal["pending", "running", "done", "error"]
 
 
 # --- agent-facing (host side) ---------------------------------------------
+
+
+class AgentOtpRequest(CamelModel):
+    email: EmailStr
+
+
+class AgentOtpVerify(CamelModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+    @field_validator("code")
+    @classmethod
+    def _digits(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("The code is six digits.")
+        return value
+
+
+class AgentOtpVerifyResponse(CamelModel):
+    token: str
 
 
 class EnrollRequest(CamelModel):

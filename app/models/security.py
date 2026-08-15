@@ -45,6 +45,31 @@ class PasswordResetCode(UUIDMixin, TimestampMixin, Base):
         return f"<PasswordResetCode {self.email}>"
 
 
+class AgentOtpCode(UUIDMixin, TimestampMixin, Base):
+    """OTP ya kuunganisha HomeSIEM Agent desktop app kwa akaunti ya email.
+
+    Mfumo ule ule wa `PasswordResetCode`: code yenyewe haihifadhiwi, tunahifadhi
+    SHA-256 yake pekee. Verify ikifanikiwa, sensor token mpya inatolewa kwa org
+    ya mtumiaji na kurudishwa kwa agent (marudio moja tu).
+    """
+
+    __tablename__ = "agent_otp_codes"
+
+    email: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    #: Imekwisha tumika (mara moja tu inatumika).
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    requested_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<AgentOtpCode {self.email}>"
+
+
 class Invitation(UUIDMixin, TimestampMixin, Base):
     """Mwaliko wa kujiunga na organization."""
 

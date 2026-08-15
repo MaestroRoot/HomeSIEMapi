@@ -30,7 +30,7 @@ from app.models.monitoring import (
 )
 from app.models.organization import Organization
 from app.models.payment import Payment
-from app.models.security import Invitation, PasswordResetCode
+from app.models.security import AgentOtpCode, Invitation, PasswordResetCode
 from app.models.siem import Alert, DataSource, ResponseAction
 from app.models.subscription import Subscription
 from app.models.user import User
@@ -40,6 +40,7 @@ __all__ = [
     "Base",
     "Agent",
     "AgentJob",
+    "AgentOtpCode",
     "Alert",
     "CHANNELS_BY_METHOD",
     "Dashboard",

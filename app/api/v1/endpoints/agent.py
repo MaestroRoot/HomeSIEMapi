@@ -17,19 +17,26 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from pydantic import Field, field_serializer
 from sqlalchemy import delete
 
 from app.api.deps import CurrentUser, DbSession, RequireAnalyst, SensorOrg
-from app.core.errors import NotFoundError
+from app.core.email import send_agent_otp
+from app.core.errors import AuthError, NotFoundError
 from app.core.logging import get_logger
+from app.core.ratelimit import client_key, otp_limiter
 from app.crud import agent as crud
+from app.crud import agent_otp as agent_otp_crud
 from app.crud import collection as stream_crud
 from app.crud import inventory as inv_crud
 from app.crud import monitoring as mon_crud
+from app.crud import user as user_crud
 from app.models.monitoring import ForensicSnapshot, Vulnerability
 from app.schemas.agent import (
+    AgentOtpRequest,
+    AgentOtpVerify,
+    AgentOtpVerifyResponse,
     AgentRead,
     EnrollRequest,
     EnrollResponse,
@@ -46,6 +53,61 @@ router = APIRouter(tags=["agent"])
 
 
 # --- agent-facing ---------------------------------------------------------
+
+
+@router.post("/agent/otp/request", response_model=Message, summary="Email a one-time code to link an agent")
+async def request_agent_otp(
+    request: Request,
+    payload: AgentOtpRequest,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> Message:
+    """Agent inatuma email ya akaunti; code ya tarakimu 6 inatumwa kwa email ile.
+
+    Hakuna token hapa — uthibitisho ni kumiliki mailbox ya akaunti iliyosajiliwa.
+    """
+    otp_limiter.hit(client_key(request.client.host if request.client else None))
+
+    email = payload.email.lower()
+    user = await user_crud.get_by_email(db, email)
+    if user is None:
+        raise NotFoundError("No account was found with this email.", code="user_not_found")
+
+    code = await agent_otp_crud.create(
+        db, email, ip=request.client.host if request.client else None
+    )
+    background.add_task(send_agent_otp, to_email=email, name=user.name, code=code)
+
+    return Message(detail="A six digit code is on its way.", code="otp_sent")
+
+
+@router.post("/agent/otp/verify", response_model=AgentOtpVerifyResponse, summary="Exchange a code for a sensor credential")
+async def verify_agent_otp(
+    request: Request,
+    payload: AgentOtpVerify,
+    db: DbSession,
+) -> AgentOtpVerifyResponse:
+    """Inabadilisha OTP kuwa sensor token (ya org ya akaunti) kwa agent.
+
+    Agent kisha hutumia token hiyo kwenye `/agent/enroll` na kuendelea — hivyo
+    maelekezo ya agent haubadiliki hata kidogo.
+    """
+    otp_limiter.hit(client_key(request.client.host if request.client else None))
+
+    email = payload.email.lower()
+    user = await user_crud.get_by_email(db, email)
+    if user is None:
+        raise AuthError("No account was found with this email.", code="user_not_found")
+
+    token = await agent_otp_crud.verify_and_issue(
+        db, email, payload.code, organization_id=user.organization_id
+    )
+    if token is None:
+        raise AuthError(
+            "That code is wrong or has expired. Request a new one.", code="otp_invalid"
+        )
+
+    return AgentOtpVerifyResponse(token=token)
 
 
 @router.post("/agent/enroll", response_model=EnrollResponse, summary="Enroll an agent (first run)")
